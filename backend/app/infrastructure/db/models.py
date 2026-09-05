@@ -34,7 +34,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-PROVIDERS = ("openai", "azure", "elevenlabs", "kokoro", "macos_say")
+PROVIDERS = ("openai", "azure", "elevenlabs", "kokoro")
 MODES = ("monologue", "dialogue", "listening_test", "shadowing")
 GENDERS = ("female", "male", "neutral", "unknown")
 AGE_GROUPS = ("young", "adult", "mature", "unknown")
@@ -104,7 +104,13 @@ class Project(Base):
     )
 
     speakers: Mapped[list[Speaker]] = relationship(
-        back_populates="project", cascade="all, delete-orphan", lazy="selectin"
+        back_populates="project",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        # Without an explicit order the database decides, so the UI's "Voice 1"
+        # could point at [B] and shuffle between reloads. Label order is the
+        # order the speakers appear in the script.
+        order_by="Speaker.label",
     )
     segments: Mapped[list[Segment]] = relationship(
         back_populates="project",

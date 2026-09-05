@@ -65,6 +65,17 @@ const en = {
   "voice.count": "{shown} of {total} voices",
   "voice.noMatches": "No voices match these filters.",
 
+  // Speakers
+  "speakers.count": "Number of speakers",
+  "speakers.voiceN": "Voice {n}",
+  "speakers.marker": "marked {label} in the script",
+
+  // Downloads
+  "download.heading": "Download",
+  "download.audio": "Audio (MP3)",
+  "download.transcript": "Script (PDF)",
+  "download.needsRender": "Generate the audio first.",
+
   // Segments
   "segments.heading": "Segments ({count})",
 
@@ -177,6 +188,15 @@ const ja: Record<MessageKey, string> = {
   "voice.searchLabel": "声を検索",
   "voice.count": "{total}件中 {shown}件",
   "voice.noMatches": "条件に一致する声がありません。",
+
+  "speakers.count": "話者の人数",
+  "speakers.voiceN": "声{n}",
+  "speakers.marker": "スクリプト内の {label}",
+
+  "download.heading": "ダウンロード",
+  "download.audio": "音声 (MP3)",
+  "download.transcript": "スクリプト (PDF)",
+  "download.needsRender": "先に音声を生成してください。",
 
   "segments.heading": "セグメント ({count})",
 

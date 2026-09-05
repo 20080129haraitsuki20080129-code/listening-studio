@@ -60,6 +60,12 @@ export function audioUrl(path: string): string {
   return `${BASE.replace(/\/api\/v1$/, "")}${path}`;
 }
 
+/** Absolute URLs for the download endpoints. */
+export const downloadUrls = {
+  audio: (renderId: string) => `${BASE}/renders/${renderId}/download`,
+  transcript: (projectId: string) => `${BASE}/projects/${projectId}/transcript.pdf`,
+};
+
 export const api = {
   health: () => request<{ status: string }>("/health"),
 
@@ -92,6 +98,12 @@ export const api = {
     request<{ speakers: { label: string }[] }>(`/projects/${id}/parse`, {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+
+  setSpeakerCount: (projectId: string, count: number) =>
+    request<Speaker[]>(`/projects/${projectId}/speakers`, {
+      method: "PUT",
+      body: JSON.stringify({ count }),
     }),
 
   updateSpeaker: (id: string, body: Record<string, unknown>) =>

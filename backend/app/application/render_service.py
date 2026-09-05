@@ -7,7 +7,9 @@ track.
 
 from __future__ import annotations
 
+import logging
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -15,7 +17,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.tts_service import TTSService
-from app.domain.errors import AppError, InvalidScript, VoiceNotFound
+from app.domain.errors import (
+    AppError,
+    InvalidScript,
+    ProviderRateLimited,
+    ProviderUnavailable,
+    VoiceNotFound,
+)
 from app.domain.resolution import ResolutionInput, resolve_speed, resolve_voice_id
 from app.infrastructure.audio.ffmpeg import FFmpeg
 from app.infrastructure.db.models import (
@@ -27,6 +35,8 @@ from app.infrastructure.db.models import (
     Voice,
 )
 from app.infrastructure.storage.base import StorageBackend
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -43,11 +53,44 @@ class RenderService:
         ffmpeg: FFmpeg,
         storage: StorageBackend,
         session_factory: async_sessionmaker[AsyncSession],
+        *,
+        failover_enabled: bool = False,
+        available_providers: Sequence[str] = (),
     ) -> None:
         self._tts = tts
         self._ffmpeg = ffmpeg
         self._storage = storage
         self._session_factory = session_factory
+        self._failover_enabled = failover_enabled
+        self._available_providers = tuple(available_providers)
+
+    async def _equivalent_voice(
+        self, session: AsyncSession, voice: Voice
+    ) -> Voice | None:
+        """A stand-in on another provider with the same accent and gender.
+
+        TASKS Phase 2 forbids silently failing over to an obviously different
+        voice, so a substitute must match on both axes the user actually chose
+        from. An accent or gender of "unknown" is not a match for anything --
+        we cannot claim two unknowns sound alike.
+        """
+        if voice.accent in (None, "unknown") or voice.gender == "unknown":
+            return None
+        candidates = (
+            await session.execute(
+                select(Voice)
+                .where(
+                    Voice.provider != voice.provider,
+                    Voice.provider.in_(self._available_providers),
+                    Voice.accent == voice.accent,
+                    Voice.gender == voice.gender,
+                    Voice.enabled.is_(True),
+                )
+                .order_by(Voice.provider, Voice.name)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        return candidates
 
     # ---------- resolution ----------
 
@@ -96,15 +139,39 @@ class RenderService:
             raise InvalidScript("Segment text is empty.")
 
         voice, speed = await self._resolve(session, project, segment)
-        result = await self._tts.synthesize(
-            session,
-            provider=voice.provider,
-            provider_voice_id=voice.provider_voice_id,
-            text=segment.text,
-            speed=speed,
-            output_format=output_format,
-            model=voice.provider_model_hint,
-        )
+        try:
+            result = await self._tts.synthesize(
+                session,
+                provider=voice.provider,
+                provider_voice_id=voice.provider_voice_id,
+                text=segment.text,
+                speed=speed,
+                output_format=output_format,
+                model=voice.provider_model_hint,
+            )
+        except (ProviderUnavailable, ProviderRateLimited):
+            if not self._failover_enabled:
+                raise
+            substitute = await self._equivalent_voice(session, voice)
+            if substitute is None:
+                raise
+            log.warning(
+                "Failing over segment %s from %s to %s (%s/%s)",
+                segment.id,
+                voice.provider,
+                substitute.provider,
+                substitute.accent,
+                substitute.gender,
+            )
+            result = await self._tts.synthesize(
+                session,
+                provider=substitute.provider,
+                provider_voice_id=substitute.provider_voice_id,
+                text=segment.text,
+                speed=speed,
+                output_format=output_format,
+                model=substitute.provider_model_hint,
+            )
         segment.audio_asset_id = result.audio_asset.id
         segment.duration_ms = result.audio_asset.duration_ms
         await session.flush()

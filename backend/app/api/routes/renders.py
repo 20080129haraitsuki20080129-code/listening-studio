@@ -8,7 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import Container, get_container
-from app.domain.errors import NotFound
+from app.api.downloads import content_disposition, safe_filename
+from app.domain.errors import InvalidScript, NotFound
 from app.infrastructure.db.models import AudioAsset, RenderJob
 from app.infrastructure.db.session import get_session
 from app.schemas.render import AudioAssetOut, RenderCreate, RenderOut
@@ -133,6 +134,68 @@ async def get_audio_asset(
         duration_ms=asset.duration_ms,
         size_bytes=asset.size_bytes,
         audio_url=container.storage.public_url(asset.storage_key),
+    )
+
+
+@router.get("/renders/{render_id}/download")
+async def download_render(
+    render_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    container: Container = Depends(get_container),
+) -> Response:
+    """The finished audio, as an attachment named after the project."""
+    job = await session.get(RenderJob, render_id)
+    if job is None:
+        raise NotFound("The render does not exist.")
+    if job.status != "completed" or job.final_audio_asset_id is None:
+        raise InvalidScript("This render has not finished yet.")
+
+    asset = await session.get(AudioAsset, job.final_audio_asset_id)
+    if asset is None:
+        raise NotFound("The rendered audio is no longer available.")
+
+    project = await container.projects.get(session, job.project_id)
+    data = await container.storage.get(asset.storage_key)
+    filename = safe_filename(project.title, asset.format)
+    return Response(
+        content=data,
+        media_type=asset.mime_type,
+        headers={"Content-Disposition": content_disposition(filename)},
+    )
+
+
+@router.get("/projects/{project_id}/transcript.pdf")
+async def download_transcript(
+    project_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    container: Container = Depends(get_container),
+) -> Response:
+    """The script as a PDF, with speaker labels and per-segment durations."""
+    from app.infrastructure.documents.transcript_pdf import (
+        TranscriptLine,
+        build_transcript_pdf,
+    )
+
+    project = await container.projects.get(session, project_id)
+    rows = await container.projects.transcript_lines(session, project)
+    if not rows:
+        raise InvalidScript("Parse the script before downloading a transcript.")
+
+    total = sum(duration or 0 for _, _, _, duration in rows) or None
+    pdf = build_transcript_pdf(
+        title=project.title,
+        mode=project.mode,
+        lines=[
+            TranscriptLine(index=i, speaker=speaker, text=text, duration_ms=duration)
+            for i, speaker, text, duration in rows
+        ],
+        total_duration_ms=total,
+    )
+    filename = safe_filename(project.title, "pdf")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": content_disposition(filename)},
     )
 
 

@@ -99,6 +99,7 @@ class VoiceService:
                             gender=descriptor.gender,
                             age_group=descriptor.age_group,
                             style_tags=list(descriptor.style_tags),
+                            preview_url=descriptor.preview_url,
                             voice_metadata=dict(descriptor.metadata),
                         )
                     )
@@ -111,6 +112,7 @@ class VoiceService:
                     row.gender = descriptor.gender
                     row.age_group = descriptor.age_group
                     row.style_tags = list(descriptor.style_tags)
+                    row.preview_url = descriptor.preview_url
                     row.provider_model_hint = descriptor.provider_model_hint
                     updated += 1
 

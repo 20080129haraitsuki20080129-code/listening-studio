@@ -351,3 +351,200 @@ class TestConcurrentRenders:
         ]
         # Same text, same voice, same speed -> the identical cached asset.
         assert segments[0]["audio_asset_id"] == segments[1]["audio_asset_id"]
+
+
+class TestSpeakerRoster:
+    async def _dialogue(self, client) -> str:
+        pid = (
+            await client.post(
+                "/projects",
+                json={
+                    "title": "roster",
+                    "mode": "dialogue",
+                    "source_text": "[A]\nOne.\n\n[B]\nTwo.\n\n[C]\nThree.",
+                },
+            )
+        ).json()["id"]
+        await client.post(f"/projects/{pid}/parse", json={})
+        return pid
+
+    async def test_sets_an_exact_number_of_speakers(self, client):
+        pid = await self._dialogue(client)
+        speakers = (
+            await client.put(f"/projects/{pid}/speakers", json={"count": 4})
+        ).json()
+        assert [s["label"] for s in speakers] == ["A", "B", "C", "D"]
+        assert [s["display_name"] for s in speakers] == [
+            "Voice 1", "Voice 2", "Voice 3", "Voice 4",
+        ]
+
+    async def test_shrinking_keeps_every_segment_attached_to_a_speaker(self, client):
+        pid = await self._dialogue(client)
+        await client.put(f"/projects/{pid}/speakers", json={"count": 2})
+
+        project = (await client.get(f"/projects/{pid}")).json()
+        assert len(project["speakers"]) == 2
+        # Segments from the removed speaker move to the first one rather than
+        # losing their voice.
+        assert all(s["speaker_id"] for s in project["segments"])
+        live = {s["id"] for s in project["speakers"]}
+        assert {s["speaker_id"] for s in project["segments"]} <= live
+
+    async def test_growing_preserves_existing_voice_assignments(self, client):
+        voices = await _sync_voices(client)
+        pid = await self._dialogue(client)
+        project = (await client.get(f"/projects/{pid}")).json()
+        first = project["speakers"][0]
+        await client.patch(
+            f"/speakers/{first['id']}", json={"voice_id": voices["british"]["id"]}
+        )
+
+        await client.put(f"/projects/{pid}/speakers", json={"count": 5})
+        project = (await client.get(f"/projects/{pid}")).json()
+        kept = next(s for s in project["speakers"] if s["label"] == "A")
+        assert kept["voice_id"] == voices["british"]["id"]
+
+    async def test_rejects_an_unreasonable_count(self, client):
+        pid = await self._dialogue(client)
+        r = await client.put(f"/projects/{pid}/speakers", json={"count": 99})
+        assert r.status_code == 422
+
+    async def test_speaker_with_segments_cannot_be_deleted_directly(self, client):
+        pid = await self._dialogue(client)
+        project = (await client.get(f"/projects/{pid}")).json()
+        used = project["speakers"][0]
+        r = await client.delete(f"/speakers/{used['id']}")
+        assert r.status_code == 422
+        assert r.json()["error"]["code"] == "INVALID_SCRIPT"
+
+
+class TestDownloads:
+    async def test_transcript_pdf_has_pdf_headers_and_content(self, client):
+        pid = (
+            await client.post(
+                "/projects",
+                json={
+                    "title": "Download me",
+                    "mode": "monologue",
+                    "source_text": "One sentence. Two sentences.",
+                },
+            )
+        ).json()["id"]
+        await client.post(f"/projects/{pid}/parse", json={})
+
+        r = await client.get(f"/projects/{pid}/transcript.pdf")
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "application/pdf"
+        assert "attachment" in r.headers["content-disposition"]
+        assert "Download_me.pdf" in r.headers["content-disposition"]
+        assert r.content.startswith(b"%PDF")
+
+    async def test_japanese_title_keeps_an_ascii_fallback_filename(self, client):
+        pid = (
+            await client.post(
+                "/projects",
+                json={
+                    "title": "三人会話",
+                    "mode": "monologue",
+                    "source_text": "One sentence.",
+                },
+            )
+        ).json()["id"]
+        await client.post(f"/projects/{pid}/parse", json={})
+
+        r = await client.get(f"/projects/{pid}/transcript.pdf")
+        disposition = r.headers["content-disposition"]
+        # Stripping a fully Japanese title must not yield a file called ".pdf".
+        assert 'filename="listening.pdf"' in disposition
+        assert "filename*=UTF-8''" in disposition
+
+    async def test_transcript_before_parsing_is_rejected(self, client):
+        pid = (
+            await client.post("/projects", json={"title": "Empty", "mode": "monologue"})
+        ).json()["id"]
+        r = await client.get(f"/projects/{pid}/transcript.pdf")
+        assert r.status_code == 422
+        assert r.json()["error"]["code"] == "INVALID_SCRIPT"
+
+    async def test_audio_download_requires_a_finished_render(self, client):
+        voices = await _sync_voices(client)
+        pid = (
+            await client.post(
+                "/projects",
+                json={"title": "Audio", "mode": "monologue", "source_text": "Hello."},
+            )
+        ).json()["id"]
+        await client.patch(
+            f"/projects/{pid}", json={"default_voice_id": voices["british"]["id"]}
+        )
+        await client.post(f"/projects/{pid}/parse", json={})
+
+        job = (await client.post(f"/projects/{pid}/renders", json={})).json()
+        early = await client.get(f"/renders/{job['id']}/download")
+        assert early.status_code == 422
+
+        import asyncio
+
+        for _ in range(150):
+            current = (await client.get(f"/renders/{job['id']}")).json()
+            if current["status"] in ("completed", "failed"):
+                break
+            await asyncio.sleep(0.1)
+        assert current["status"] == "completed", current.get("error")
+
+        r = await client.get(f"/renders/{job['id']}/download")
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "audio/mpeg"
+        assert "Audio.mp3" in r.headers["content-disposition"]
+        assert len(r.content) > 0
+
+
+class TestSpeakerOrdering:
+    """Voice slots are numbered by position, so the order must be stable.
+
+    Without an explicit order the database chooses, and the UI's "Voice 1"
+    could point at [B] one reload and [A] the next.
+    """
+
+    async def test_speakers_come_back_in_label_order(self, client):
+        pid = (
+            await client.post(
+                "/projects",
+                json={
+                    "title": "order",
+                    "mode": "dialogue",
+                    # Deliberately introduce B before A.
+                    "source_text": "[B]\nSecond.\n\n[A]\nFirst.\n\n[C]\nThird.",
+                },
+            )
+        ).json()["id"]
+        await client.post(f"/projects/{pid}/parse", json={})
+
+        project = (await client.get(f"/projects/{pid}")).json()
+        assert [s["label"] for s in project["speakers"]] == ["A", "B", "C"]
+
+    async def test_order_is_stable_across_reloads_and_roster_changes(self, client):
+        pid = (
+            await client.post(
+                "/projects",
+                json={
+                    "title": "order",
+                    "mode": "dialogue",
+                    "source_text": "[C]\nThird.\n\n[A]\nFirst.\n\n[B]\nSecond.",
+                },
+            )
+        ).json()["id"]
+        await client.post(f"/projects/{pid}/parse", json={})
+
+        seen = []
+        for _ in range(3):
+            project = (await client.get(f"/projects/{pid}")).json()
+            seen.append([s["label"] for s in project["speakers"]])
+        assert seen == [["A", "B", "C"]] * 3
+
+        roster = (
+            await client.put(f"/projects/{pid}/speakers", json={"count": 4})
+        ).json()
+        assert [s["label"] for s in roster] == ["A", "B", "C", "D"]
+        project = (await client.get(f"/projects/{pid}")).json()
+        assert [s["label"] for s in project["speakers"]] == ["A", "B", "C", "D"]

@@ -46,13 +46,15 @@ class Settings(BaseSettings):
     storage_backend: str = "local"
     local_storage_path: Path = Path("./data/audio")
 
+    # Off by default. TASKS Phase 2 requires failover to be opt-in, because
+    # silently swapping to an audibly different voice ruins listening material.
+    tts_failover_enabled: bool = False
+
     kokoro_enabled: bool = True
     kokoro_repo_id: str = "hexgrad/Kokoro-82M"
 
     phonemizer_espeak_library: str = ""
     espeak_data_path: str = ""
-
-    macos_say_enabled: bool = True
 
     openai_api_key: str = ""
     openai_tts_model: str = "gpt-4o-mini-tts"

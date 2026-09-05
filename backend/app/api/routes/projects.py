@@ -18,6 +18,7 @@ from app.schemas.project import (
     ProjectUpdate,
     SpeakerCreate,
     SpeakerOut,
+    SpeakerRosterSet,
 )
 
 router = APIRouter(tags=["projects"])
@@ -115,6 +116,21 @@ async def parse_project(
             for item in parsed
         ],
     )
+
+
+@router.put("/projects/{project_id}/speakers", response_model=list[SpeakerOut])
+async def set_speaker_roster(
+    project_id: uuid.UUID,
+    payload: SpeakerRosterSet,
+    session: AsyncSession = Depends(get_session),
+    container: Container = Depends(get_container),
+) -> list[SpeakerOut]:
+    project = await container.projects.get(session, project_id)
+    speakers = await container.projects.set_speaker_roster(
+        session, project, payload.count
+    )
+    await session.commit()
+    return [SpeakerOut.model_validate(s) for s in speakers]
 
 
 @router.post(

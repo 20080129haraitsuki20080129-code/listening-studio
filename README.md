@@ -12,12 +12,14 @@ cost, no network round trip.
 - Monologue and dialogue (`[A]` / `[B]`, or `A:` / `B:`)
 - Sentence splitting that survives abbreviations, so `Dr. Chen asked for it by
   3.30 p.m.` stays one segment
-- 52 voices across 6 English accents, filterable by accent, gender and provider
+- 28 voices across American and British English, filterable by accent and gender
+- Dialogue: choose how many speakers, then a voice per speaker
 - Per-speaker voice and speed
 - Generation speed (server-side) separate from playback rate (browser-only)
 - MP3 render with inter-segment pauses and EBU R128 loudness normalization
 - Player: seek, playback rate, A-B repeat, transcript show/hide
 - Projects save and reopen
+- Download the audio as MP3 and the script as PDF
 - UI in English or Japanese, switchable from the header
 
 ## Interface language
@@ -35,14 +37,26 @@ back to the server's own English message rather than showing a bare key.
 
 | Provider | Status | Accents |
 |---|---|---|
-| `kokoro` | working, default | american, british |
-| `macos_say` | working, macOS only | american, british, australian, irish, indian, south_african |
-| `openai` | fully implemented; set `OPENAI_API_KEY` to enable | unknown |
-| `azure` | stub | — |
-| `elevenlabs` | stub | — |
+| `kokoro` | working, default, local | american, british |
+| `openai` | implemented, unverified; set `OPENAI_API_KEY` | unknown |
+| `azure` | implemented, unverified; set `AZURE_SPEECH_KEY` + `AZURE_SPEECH_REGION` | derived from locale |
+| `elevenlabs` | implemented, unverified; set `ELEVENLABS_API_KEY` | from voice labels, else unknown |
 
-Kokoro covers only American and British English, so the macOS `say` adapter is
-registered alongside it to fill in the other accents. Both are local and free.
+Kokoro runs on your machine and needs no key. The hosted adapters are written
+against each provider's documented REST API and covered by tests with mocked
+HTTP, but **none has been exercised against the live service** — no credentials
+were available. Treat the first real call as unverified.
+
+Which engine produced a voice is not shown or filterable: it is not a
+distinction a listener can hear. Accent and gender are.
+
+### Failover
+
+Off by default (`TTS_FAILOVER_ENABLED`). When enabled, a segment whose provider
+is unavailable or rate limited retries on another registered provider — but
+only with a voice of the same accent *and* gender, and never when either is
+"unknown". A substitute that would obviously sound different is refused and the
+render fails instead.
 
 ## Quick start
 

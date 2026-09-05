@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import Container, get_container
@@ -44,6 +44,17 @@ async def render_segment(
         audio_url=container.storage.public_url(asset.storage_key),
         duration_ms=asset.duration_ms,
     )
+
+
+@router.delete("/speakers/{speaker_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_speaker(
+    speaker_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    container: Container = Depends(get_container),
+) -> Response:
+    await container.projects.delete_speaker(session, speaker_id)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.patch("/speakers/{speaker_id}", response_model=SpeakerOut)

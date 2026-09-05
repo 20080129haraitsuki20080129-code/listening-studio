@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { ListeningPlayer } from "@/components/ListeningPlayer";
 import { VoiceSelector } from "@/components/VoiceSelector";
-import { ApiError, api } from "@/lib/api";
+import { ApiError, api, downloadUrls } from "@/lib/api";
 import { type MessageKey, useDynamicLabel, useTranslation } from "@/lib/i18n";
 import type { Mode, Project, RenderJob, Voice } from "@/lib/types";
 
@@ -30,6 +30,7 @@ export function Studio({ projectId }: { projectId?: string }) {
   const [mode, setMode] = useState<Mode>("monologue");
   const [sourceText, setSourceText] = useState(SAMPLE_MONOLOGUE);
   const [speed, setSpeed] = useState(1.0);
+  const [speakerCount, setSpeakerCount] = useState(2);
   const [transcriptVisible, setTranscriptVisible] = useState(true);
 
   const [job, setJob] = useState<RenderJob | null>(null);
@@ -37,6 +38,10 @@ export function Studio({ projectId }: { projectId?: string }) {
   const [error, setError] = useState<string | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Assigning voices to two speakers in quick succession fires two reloads.
+  // Without a guard a slower earlier response can land last and revert the
+  // newer selection, so stale loads are discarded.
+  const loadSeq = useRef(0);
 
   const fail = useCallback(
     (e: unknown) => {
@@ -69,13 +74,16 @@ export function Studio({ projectId }: { projectId?: string }) {
 
   const loadProject = useCallback(
     async (id: string) => {
+      const seq = ++loadSeq.current;
       try {
         const p = await api.getProject(id);
+        if (seq !== loadSeq.current) return;
         setProject(p);
         setTitle(p.title);
         setMode(p.mode);
         setSourceText(p.source_text);
         setSpeed(Number(p.default_generation_speed));
+        if (p.speakers.length > 0) setSpeakerCount(p.speakers.length);
         setTranscriptVisible(p.transcript_visible_default);
       } catch (e) {
         fail(e);
@@ -122,13 +130,43 @@ export function Studio({ projectId }: { projectId?: string }) {
         transcript_visible_default: transcriptVisible,
       });
       await api.parseProject(current.id, { source_text: sourceText, mode });
+      if (mode === "dialogue") {
+        // The parser creates a speaker per marker found; the chosen count is
+        // what the user actually wants voice slots for.
+        await api.setSpeakerCount(current.id, speakerCount);
+      }
       await loadProject(current.id);
     } catch (e) {
       fail(e);
     } finally {
       setBusy(null);
     }
-  }, [project, title, mode, sourceText, speed, transcriptVisible, loadProject, fail, t]);
+  }, [
+    project,
+    title,
+    mode,
+    sourceText,
+    speed,
+    speakerCount,
+    transcriptVisible,
+    loadProject,
+    fail,
+    t,
+  ]);
+
+  const applySpeakerCount = useCallback(
+    async (count: number) => {
+      setSpeakerCount(count);
+      if (!project) return;
+      try {
+        await api.setSpeakerCount(project.id, count);
+        await loadProject(project.id);
+      } catch (e) {
+        fail(e);
+      }
+    },
+    [project, loadProject, fail],
+  );
 
   const assignVoice = useCallback(
     async (speakerId: string, voiceId: string) => {
@@ -315,12 +353,36 @@ export function Studio({ projectId }: { projectId?: string }) {
             </p>
           </div>
 
-          {mode === "dialogue" && project && project.speakers.length > 0 ? (
+          {mode === "dialogue" ? (
             <div className="space-y-4">
-              {project.speakers.map((speaker) => (
+              <div>
+                <label
+                  htmlFor="speaker-count"
+                  className="mb-1 block text-sm font-medium"
+                >
+                  {t("speakers.count")}
+                </label>
+                <select
+                  id="speaker-count"
+                  value={speakerCount}
+                  onChange={(e) => applySpeakerCount(Number(e.target.value))}
+                  className="field"
+                >
+                  {[1, 2, 3, 4, 5, 6].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {project?.speakers.map((speaker, index) => (
                 <div key={speaker.id}>
                   <h3 className="mb-2 text-sm font-semibold">
-                    {t("settings.speaker", { label: speaker.label })}
+                    {t("speakers.voiceN", { n: index + 1 })}
+                    <span className="ml-2 text-xs font-normal text-slate-500 dark:text-slate-400">
+                      {t("speakers.marker", { label: `[${speaker.label}]` })}
+                    </span>
                     {speaker.voice_id && (
                       <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">
                         {voices.find((v) => v.id === speaker.voice_id)?.name}
@@ -331,9 +393,15 @@ export function Studio({ projectId }: { projectId?: string }) {
                     voices={voices}
                     selectedId={speaker.voice_id}
                     onSelect={(voiceId) => assignVoice(speaker.id, voiceId)}
+                    disabled={busy !== null}
                   />
                 </div>
               ))}
+              {!project && (
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {t("settings.saveFirst")}
+                </p>
+              )}
             </div>
           ) : (
             <div>
@@ -342,6 +410,7 @@ export function Studio({ projectId }: { projectId?: string }) {
                 voices={voices}
                 selectedId={project?.default_voice_id ?? null}
                 onSelect={setDefaultVoice}
+                disabled={!project || busy !== null}
               />
               {!project && (
                 <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
@@ -387,6 +456,36 @@ export function Studio({ projectId }: { projectId?: string }) {
               );
             })}
           </ol>
+        </section>
+      )}
+
+      {project && project.segments.length > 0 && (
+        <section className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <h2 className="mb-2 text-sm font-semibold">{t("download.heading")}</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* The transcript needs only a parsed script; the audio needs a
+                finished render. */}
+            <a
+              href={downloadUrls.transcript(project.id)}
+              download
+              className="chip"
+            >
+              {t("download.transcript")}
+            </a>
+            {job?.status === "completed" ? (
+              <a
+                href={downloadUrls.audio(job.id)}
+                download
+                className="chip"
+              >
+                {t("download.audio")}
+              </a>
+            ) : (
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                {t("download.needsRender")}
+              </span>
+            )}
+          </div>
         </section>
       )}
 

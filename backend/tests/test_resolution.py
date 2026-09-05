@@ -88,7 +88,7 @@ class TestCacheKey:
     @pytest.mark.parametrize(
         "field,value",
         [
-            ("provider", "macos_say"),
+            ("provider", "azure"),
             ("model", "tts-1"),
             ("provider_voice_id", "bf_emma"),
             ("text", "Different."),

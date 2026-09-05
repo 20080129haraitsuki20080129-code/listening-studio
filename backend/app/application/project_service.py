@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -10,6 +10,15 @@ from app.domain.errors import InvalidScript, NotFound
 from app.domain.parsing import ParsedSegment, parse_script, speaker_labels
 from app.infrastructure.db.models import Project, Segment, Speaker
 from app.schemas.project import ProjectCreate, ProjectUpdate
+
+# Dialogue speakers are addressed by single letters in the script markup
+# ([A] / [B] / ...), which caps a practical roster well below the alphabet.
+MAX_SPEAKERS = 6
+
+
+def speaker_label(index: int) -> str:
+    return chr(ord("A") + index)
+
 
 # Fields whose change invalidates a segment's rendered audio.
 _TTS_AFFECTING = frozenset(
@@ -166,6 +175,116 @@ class ProjectService:
         return segment
 
     # ---------- speakers ----------
+
+    async def set_speaker_roster(
+        self, session: AsyncSession, project: Project, count: int
+    ) -> list[Speaker]:
+        """Make the project have exactly `count` speakers, labelled A, B, C...
+
+        Existing speakers are matched by label so their voice and speed survive
+        a change in count. Segments belonging to a removed speaker move to the
+        first remaining one rather than losing their voice entirely.
+        """
+        if not 1 <= count <= MAX_SPEAKERS:
+            raise InvalidScript(
+                f"A dialogue supports between 1 and {MAX_SPEAKERS} speakers."
+            )
+
+        existing = {
+            speaker.label: speaker
+            for speaker in (
+                await session.execute(
+                    select(Speaker)
+                    .where(Speaker.project_id == project.id)
+                    .order_by(Speaker.label)
+                )
+            ).scalars()
+        }
+
+        wanted = [speaker_label(i) for i in range(count)]
+        for index, label in enumerate(wanted):
+            display_name = f"Voice {index + 1}"
+            if label not in existing:
+                speaker = Speaker(
+                    project_id=project.id, label=label, display_name=display_name
+                )
+                session.add(speaker)
+                existing[label] = speaker
+            else:
+                # Keep names consistent across speakers the parser created and
+                # ones this roster added; the transcript PDF prints them.
+                existing[label].display_name = display_name
+        await session.flush()
+
+        keeper = existing[wanted[0]]
+        for label, speaker in list(existing.items()):
+            if label in wanted:
+                continue
+            await session.execute(
+                update(Segment)
+                .where(Segment.speaker_id == speaker.id)
+                .values(speaker_id=keeper.id)
+            )
+            await session.delete(speaker)
+            del existing[label]
+        await session.flush()
+
+        return [existing[label] for label in wanted]
+
+    async def delete_speaker(
+        self, session: AsyncSession, speaker_id: uuid.UUID
+    ) -> None:
+        """Remove a speaker.
+
+        API.md requires rejecting a delete that would leave segments invalid,
+        so a speaker still referenced by segments cannot be removed on its own;
+        change the roster size instead, which reassigns them explicitly.
+        """
+        speaker = await self.get_speaker(session, speaker_id)
+        referenced = (
+            await session.execute(
+                select(Segment.id).where(Segment.speaker_id == speaker.id).limit(1)
+            )
+        ).scalar_one_or_none()
+        if referenced is not None:
+            raise InvalidScript(
+                "This speaker still has segments. Change the number of speakers "
+                "instead, which reassigns them."
+            )
+        await session.delete(speaker)
+        await session.flush()
+
+    async def transcript_lines(
+        self, session: AsyncSession, project: Project
+    ) -> list[tuple[int, str | None, str, int | None]]:
+        """Ordered (index, speaker display name, text, duration) rows."""
+        speakers = {
+            speaker.id: speaker
+            for speaker in (
+                await session.execute(
+                    select(Speaker).where(Speaker.project_id == project.id)
+                )
+            ).scalars()
+        }
+        segments = (
+            await session.execute(
+                select(Segment)
+                .where(Segment.project_id == project.id)
+                .order_by(Segment.order_index)
+            )
+        ).scalars()
+        rows = []
+        for position, segment in enumerate(segments, start=1):
+            speaker = speakers.get(segment.speaker_id) if segment.speaker_id else None
+            rows.append(
+                (
+                    position,
+                    speaker.display_name if speaker else None,
+                    segment.text,
+                    segment.duration_ms,
+                )
+            )
+        return rows
 
     async def get_speaker(
         self, session: AsyncSession, speaker_id: uuid.UUID

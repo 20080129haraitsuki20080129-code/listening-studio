@@ -46,6 +46,12 @@ class SpeakerUpdate(ApiModel):
     default_pause_after_ms: int | None = Field(default=None, ge=0, le=60_000)
 
 
+class SpeakerRosterSet(ApiModel):
+    """How many speakers the dialogue should have."""
+
+    count: int = Field(ge=1, le=6)
+
+
 class SpeakerOut(ApiModel):
     id: uuid.UUID
     project_id: uuid.UUID

@@ -50,6 +50,7 @@ class VoiceDescriptor:
     age_group: str = "unknown"
     style_tags: list[str] = field(default_factory=list)
     provider_model_hint: str | None = None
+    preview_url: str | None = None
     metadata: dict = field(default_factory=dict)
 
 

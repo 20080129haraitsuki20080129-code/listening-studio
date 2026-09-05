@@ -49,6 +49,16 @@ curl -X POST http://localhost:8000/api/v1/voices/sync
 
 Interactive API docs: <http://localhost:8000/docs>
 
+## Phase 2 notes
+
+`app/infrastructure/tts/normalization.py` is the single place provider metadata
+becomes catalog metadata. Anything a provider does not state resolves to
+`unknown`; nothing is inferred from a name.
+
+Failover is opt-in via `TTS_FAILOVER_ENABLED` and is voice-group aware: a
+substitute must match accent *and* gender, and "unknown" never matches. See
+`tests/test_failover.py`.
+
 ## Tests
 
 ```bash
@@ -64,11 +74,15 @@ the architectural boundaries the SPEC requires -- provider SDKs stay inside
 
 | Provider | Status | Accents |
 |---|---|---|
-| `kokoro` | working, default | american, british |
-| `macos_say` | working, macOS only | american, british, australian, irish, indian, south_african |
-| `openai` | fully implemented, enabled by setting `OPENAI_API_KEY` | unknown (OpenAI publishes no accent/gender metadata) |
-| `azure` | stub | — |
-| `elevenlabs` | stub | — |
+| `kokoro` | working, default, local, no key | american, british |
+| `openai` | implemented, **unverified** | unknown (OpenAI publishes no accent/gender metadata) |
+| `azure` | implemented, **unverified** | derived from the voice's locale |
+| `elevenlabs` | implemented, **unverified** | from voice labels, `unknown` when absent |
+
+"Unverified" means the adapter is written against the provider's documented
+REST API and its request mapping is covered by `tests/test_adapters.py` with
+mocked HTTP, but it has never run against the live service because no
+credentials were available. Each registers only when its key is set.
 
 Adding a provider means implementing `TTSProvider` in
 `app/infrastructure/tts/` and registering it in `app/api/deps.py`. Nothing

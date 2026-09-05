@@ -11,6 +11,29 @@ test.use({ locale: "en-US" });
  * These drive the real backend, so audio really is synthesized.
  */
 
+/**
+ * Pick the first voice in a panel and confirm it stuck.
+ *
+ * Changing the accent filter re-renders the list, so a bare `.first().click()`
+ * can land on a node React has already replaced. Asserting aria-pressed makes
+ * a missed selection fail here instead of surfacing later as a permanently
+ * disabled Generate button.
+ */
+async function pickVoice(page: Page, panel: number, accent: string) {
+  await page.getByLabel("Accent").nth(panel).selectOption(accent);
+  const card = page.locator("ul").nth(panel).locator("li button").first();
+  await expect(card).toBeVisible();
+  await expect(card).toBeEnabled();
+  await card.click();
+  await expect(card).toHaveAttribute("aria-pressed", "true");
+}
+
+async function generate(page: Page) {
+  const button = page.getByRole("button", { name: "Generate audio" });
+  await expect(button).toBeEnabled();
+  await button.click();
+}
+
 async function waitForRender(page: Page) {
   // Generation is provider-bound; give it room but fail loudly on error.
   await expect(page.getByRole("button", { name: "Play" })).toBeVisible({
@@ -30,10 +53,8 @@ test.describe("monologue", () => {
     await page.getByRole("button", { name: "Save & parse" }).click();
     await expect(page.getByText(/Segments \(/)).toBeVisible();
 
-    await page.getByLabel("Accent").first().selectOption("british");
-    await page.locator("ul li button").first().click();
-
-    await page.getByRole("button", { name: "Generate audio" }).click();
+    await pickVoice(page, 0, "british");
+    await generate(page);
     await waitForRender(page);
 
     const duration = await page
@@ -52,25 +73,23 @@ test.describe("dialogue", () => {
     await page.getByLabel("Project title").fill("E2E dialogue");
     await page.getByRole("button", { name: "Save & parse" }).click();
 
-    // Both speakers are detected from the [A] / [B] markup.
-    await expect(page.getByText("Speaker A")).toBeVisible();
-    await expect(page.getByText("Speaker B")).toBeVisible();
+    // Both speakers are detected from the [A] / [B] markup and presented as
+    // numbered voice slots.
+    await expect(page.getByText("Voice 1")).toBeVisible();
+    await expect(page.getByText("Voice 2")).toBeVisible();
 
-    await page.getByLabel("Accent").nth(0).selectOption("british");
-    await page.locator("ul").nth(0).locator("li button").first().click();
-
-    await page.getByLabel("Accent").nth(1).selectOption("american");
-    await page.locator("ul").nth(1).locator("li button").first().click();
+    await pickVoice(page, 0, "british");
+    await pickVoice(page, 1, "american");
 
     // The two speakers must end up on different voices.
     const chosen = await page
       .locator("h3")
-      .filter({ hasText: /Speaker [AB]/ })
+      .filter({ hasText: /Voice [12]/ })
       .allInnerTexts();
     expect(chosen).toHaveLength(2);
     expect(chosen[0]).not.toEqual(chosen[1]);
 
-    await page.getByRole("button", { name: "Generate audio" }).click();
+    await generate(page);
     await waitForRender(page);
   });
 });
@@ -87,9 +106,8 @@ test.describe("player", () => {
         "First sentence for the loop test. Second sentence follows it. A third sentence gives us length.",
       );
     await page.getByRole("button", { name: "Save & parse" }).click();
-    await page.getByLabel("Accent").first().selectOption("american");
-    await page.locator("ul li button").first().click();
-    await page.getByRole("button", { name: "Generate audio" }).click();
+    await pickVoice(page, 0, "american");
+    await generate(page);
     await waitForRender(page);
 
     const audio = page.locator("audio");
@@ -132,9 +150,9 @@ test.describe("player", () => {
     await page.getByLabel("Project title").fill("E2E transcript");
     await page.getByLabel("English script").fill("A hidden transcript sentence.");
     await page.getByRole("button", { name: "Save & parse" }).click();
-    await page.getByLabel("Accent").first().selectOption("american");
-    await page.locator("ul li button").first().click();
-    await page.getByRole("button", { name: "Generate audio" }).click();
+    await expect(page.getByText(/Segments \(/)).toBeVisible();
+    await pickVoice(page, 0, "american");
+    await generate(page);
     await waitForRender(page);
 
     await expect(

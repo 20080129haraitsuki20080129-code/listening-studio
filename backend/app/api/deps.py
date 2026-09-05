@@ -7,7 +7,6 @@ handlers and services depend on interfaces rather than concrete adapters.
 from __future__ import annotations
 
 import logging
-import platform
 
 from app.application.project_service import ProjectService
 from app.application.render_service import RenderService
@@ -29,11 +28,6 @@ def build_registry(settings: Settings) -> TTSProviderRegistry:
         from app.infrastructure.tts.kokoro_adapter import KokoroAdapter
 
         registry.register(KokoroAdapter(repo_id=settings.kokoro_repo_id))
-
-    if settings.macos_say_enabled and platform.system() == "Darwin":
-        from app.infrastructure.tts.macos_say_adapter import MacOSSayAdapter
-
-        registry.register(MacOSSayAdapter())
 
     # Hosted providers register only when credentials exist, so an unset key
     # means "not offered" rather than a runtime failure mid-render.
