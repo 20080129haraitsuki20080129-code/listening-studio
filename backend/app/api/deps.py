@@ -8,13 +8,20 @@ from __future__ import annotations
 
 import logging
 
+from fastapi import Depends, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.application.auth_service import AuthService
 from app.application.project_service import ProjectService
 from app.application.render_service import RenderService
 from app.application.tts_service import TTSService
 from app.application.voice_service import VoiceService
 from app.config import Settings, get_settings
+from app.domain.auth import NotAuthenticated, read_session
 from app.infrastructure.audio.ffmpeg import FFmpeg
-from app.infrastructure.db.session import SessionLocal
+from app.infrastructure.auth.oauth import build_oauth
+from app.infrastructure.db.models import User
+from app.infrastructure.db.session import SessionLocal, get_session
 from app.infrastructure.storage.local_storage import LocalStorage
 from app.infrastructure.tts.registry import TTSProviderRegistry
 
@@ -65,6 +72,8 @@ class Container:
         self.tts = TTSService(self.registry, self.storage, self.ffmpeg)
         self.voices = VoiceService(self.registry)
         self.projects = ProjectService()
+        self.auth = AuthService()
+        self.oauth = build_oauth(settings)
         self.renders = RenderService(self.tts, self.ffmpeg, self.storage, SessionLocal)
 
 
@@ -76,3 +85,39 @@ def get_container() -> Container:
     if _container is None:
         _container = Container(get_settings())
     return _container
+
+
+async def get_current_user(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    container: Container = Depends(get_container),
+) -> User | None:
+    """The signed-in user, or None.
+
+    Returns None rather than raising so callers can distinguish "not signed in"
+    from "signed in but not allowed".
+    """
+    token = request.cookies.get(container.settings.session_cookie_name)
+    if not token:
+        return None
+    try:
+        claims = read_session(token, container.settings.session_secret)
+    except NotAuthenticated:
+        return None
+    return await session.get(User, claims.user_id)
+
+
+async def require_user(
+    user: User | None = Depends(get_current_user),
+    container: Container = Depends(get_container),
+) -> User | None:
+    """Enforce sign-in wherever a provider is configured.
+
+    A checkout with no provider configured has no way to sign in at all, so
+    enforcing it there would lock the developer out of their own machine.
+    """
+    if not container.settings.auth_required:
+        return user
+    if user is None:
+        raise NotAuthenticated
+    return user

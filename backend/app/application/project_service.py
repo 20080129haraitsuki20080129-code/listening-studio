@@ -6,6 +6,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.domain.auth import Forbidden
 from app.domain.errors import InvalidScript, NotFound
 from app.domain.parsing import ParsedSegment, parse_script, speaker_labels
 from app.domain.styled_parsing import MAX_STYLE_SPEAKERS
@@ -29,9 +30,15 @@ _TTS_AFFECTING = frozenset(
 
 
 class ProjectService:
-    async def create(self, session: AsyncSession, payload: ProjectCreate) -> Project:
+    async def create(
+        self,
+        session: AsyncSession,
+        payload: ProjectCreate,
+        owner_id: uuid.UUID | None = None,
+    ) -> Project:
         self._check_length(payload.source_text)
         project = Project(
+            user_id=owner_id,
             title=payload.title,
             mode=payload.mode,
             source_text=payload.source_text,
@@ -41,24 +48,50 @@ class ProjectService:
         await session.flush()
         return project
 
-    async def get(self, session: AsyncSession, project_id: uuid.UUID) -> Project:
+    async def get(
+        self,
+        session: AsyncSession,
+        project_id: uuid.UUID,
+        owner_id: uuid.UUID | None = None,
+    ) -> Project:
         project = await session.get(Project, project_id)
         if project is None or project.deleted_at is not None:
             raise NotFound("The project does not exist.")
+        self._check_owner(project, owner_id)
         return project
 
-    async def list_all(self, session: AsyncSession) -> list[Project]:
-        stmt = (
-            select(Project)
-            .where(Project.deleted_at.is_(None))
-            .order_by(Project.updated_at.desc())
+    async def list_all(
+        self, session: AsyncSession, owner_id: uuid.UUID | None = None
+    ) -> list[Project]:
+        stmt = select(Project).where(Project.deleted_at.is_(None))
+        if owner_id is not None:
+            stmt = stmt.where(Project.user_id == owner_id)
+        return list(
+            (await session.execute(stmt.order_by(Project.updated_at.desc()))).scalars()
         )
-        return list((await session.execute(stmt)).scalars())
+
+    @staticmethod
+    def _check_owner(project: Project, owner_id: uuid.UUID | None) -> None:
+        """Refuse a project belonging to somebody else.
+
+        `owner_id` is None only when sign-in is switched off, which is the
+        single-developer local case. Projects created before sign-in existed
+        have no owner and stay unreachable once it is on, rather than falling
+        to whoever asks first.
+        """
+        if owner_id is None:
+            return
+        if project.user_id != owner_id:
+            raise Forbidden("This project belongs to someone else.")
 
     async def update(
-        self, session: AsyncSession, project_id: uuid.UUID, payload: ProjectUpdate
+        self,
+        session: AsyncSession,
+        project_id: uuid.UUID,
+        payload: ProjectUpdate,
+        owner_id: uuid.UUID | None = None,
     ) -> Project:
-        project = await self.get(session, project_id)
+        project = await self.get(session, project_id, owner_id)
         data = payload.model_dump(exclude_unset=True)
         if "source_text" in data:
             self._check_length(data["source_text"])
@@ -67,10 +100,15 @@ class ProjectService:
         await session.flush()
         return project
 
-    async def soft_delete(self, session: AsyncSession, project_id: uuid.UUID) -> None:
+    async def soft_delete(
+        self,
+        session: AsyncSession,
+        project_id: uuid.UUID,
+        owner_id: uuid.UUID | None = None,
+    ) -> None:
         from datetime import UTC, datetime
 
-        project = await self.get(session, project_id)
+        project = await self.get(session, project_id, owner_id)
         project.deleted_at = datetime.now(UTC)
         await session.flush()
 
@@ -164,17 +202,26 @@ class ProjectService:
     # ---------- segments ----------
 
     async def get_segment(
-        self, session: AsyncSession, segment_id: uuid.UUID
+        self,
+        session: AsyncSession,
+        segment_id: uuid.UUID,
+        owner_id: uuid.UUID | None = None,
     ) -> Segment:
         segment = await session.get(Segment, segment_id)
         if segment is None:
             raise NotFound("The segment does not exist.")
+        # A segment id alone would otherwise be a way around project ownership.
+        await self.get(session, segment.project_id, owner_id)
         return segment
 
     async def update_segment(
-        self, session: AsyncSession, segment_id: uuid.UUID, data: dict
+        self,
+        session: AsyncSession,
+        segment_id: uuid.UUID,
+        data: dict,
+        owner_id: uuid.UUID | None = None,
     ) -> Segment:
-        segment = await self.get_segment(session, segment_id)
+        segment = await self.get_segment(session, segment_id, owner_id)
         for field, value in data.items():
             setattr(segment, field, value)
         # Changing anything that feeds the TTS request makes the stored audio
@@ -243,7 +290,10 @@ class ProjectService:
         return [existing[label] for label in wanted]
 
     async def delete_speaker(
-        self, session: AsyncSession, speaker_id: uuid.UUID
+        self,
+        session: AsyncSession,
+        speaker_id: uuid.UUID,
+        owner_id: uuid.UUID | None = None,
     ) -> None:
         """Remove a speaker.
 
@@ -251,7 +301,7 @@ class ProjectService:
         so a speaker still referenced by segments cannot be removed on its own;
         change the roster size instead, which reassigns them explicitly.
         """
-        speaker = await self.get_speaker(session, speaker_id)
+        speaker = await self.get_speaker(session, speaker_id, owner_id)
         referenced = (
             await session.execute(
                 select(Segment.id).where(Segment.speaker_id == speaker.id).limit(1)
@@ -310,11 +360,15 @@ class ProjectService:
         return rows
 
     async def get_speaker(
-        self, session: AsyncSession, speaker_id: uuid.UUID
+        self,
+        session: AsyncSession,
+        speaker_id: uuid.UUID,
+        owner_id: uuid.UUID | None = None,
     ) -> Speaker:
         speaker = await session.get(Speaker, speaker_id)
         if speaker is None:
             raise NotFound("The speaker does not exist.")
+        await self.get(session, speaker.project_id, owner_id)
         return speaker
 
     def _check_length(self, source_text: str) -> None:

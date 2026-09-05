@@ -5,8 +5,9 @@ import uuid
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import Container, get_container
+from app.api.deps import Container, get_container, require_user
 from app.domain.speed_levels import DEFAULT_LEVEL, SPEED_LEVELS
+from app.infrastructure.db.models import User
 from app.infrastructure.db.session import get_session
 from app.schemas.project import (
     ParsedSegmentOut,
@@ -27,6 +28,11 @@ from app.schemas.project import (
 router = APIRouter(tags=["projects"])
 
 
+def _owner(user: User | None) -> uuid.UUID | None:
+    """The id to scope queries by, or None when sign-in is switched off."""
+    return user.id if user else None
+
+
 @router.get("/speed-levels", response_model=SpeedLevelListOut)
 async def list_speed_levels() -> SpeedLevelListOut:
     """The seven generation-speed presets, labelled by words per minute.
@@ -45,8 +51,9 @@ async def create_project(
     payload: ProjectCreate,
     session: AsyncSession = Depends(get_session),
     container: Container = Depends(get_container),
+    user: User | None = Depends(require_user),
 ) -> ProjectOut:
-    project = await container.projects.create(session, payload)
+    project = await container.projects.create(session, payload, _owner(user))
     await session.commit()
     await session.refresh(project)
     return ProjectOut.model_validate(project)
@@ -56,8 +63,9 @@ async def create_project(
 async def list_projects(
     session: AsyncSession = Depends(get_session),
     container: Container = Depends(get_container),
+    user: User | None = Depends(require_user),
 ) -> list[ProjectSummaryOut]:
-    projects = await container.projects.list_all(session)
+    projects = await container.projects.list_all(session, _owner(user))
     return [ProjectSummaryOut.model_validate(p) for p in projects]
 
 
@@ -66,8 +74,9 @@ async def get_project(
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
     container: Container = Depends(get_container),
+    user: User | None = Depends(require_user),
 ) -> ProjectOut:
-    project = await container.projects.get(session, project_id)
+    project = await container.projects.get(session, project_id, _owner(user))
     return ProjectOut.model_validate(project)
 
 
@@ -77,8 +86,11 @@ async def update_project(
     payload: ProjectUpdate,
     session: AsyncSession = Depends(get_session),
     container: Container = Depends(get_container),
+    user: User | None = Depends(require_user),
 ) -> ProjectOut:
-    project = await container.projects.update(session, project_id, payload)
+    project = await container.projects.update(
+        session, project_id, payload, _owner(user)
+    )
     await session.commit()
     await session.refresh(project)
     return ProjectOut.model_validate(project)
@@ -89,8 +101,9 @@ async def delete_project(
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
     container: Container = Depends(get_container),
+    user: User | None = Depends(require_user),
 ) -> Response:
-    await container.projects.soft_delete(session, project_id)
+    await container.projects.soft_delete(session, project_id, _owner(user))
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -101,8 +114,9 @@ async def parse_project(
     payload: ParseRequest,
     session: AsyncSession = Depends(get_session),
     container: Container = Depends(get_container),
+    user: User | None = Depends(require_user),
 ) -> ParseResponse:
-    project = await container.projects.get(session, project_id)
+    project = await container.projects.get(session, project_id, _owner(user))
     source_text = (
         payload.source_text if payload.source_text is not None else project.source_text
     )
@@ -140,8 +154,9 @@ async def set_speaker_roster(
     payload: SpeakerRosterSet,
     session: AsyncSession = Depends(get_session),
     container: Container = Depends(get_container),
+    user: User | None = Depends(require_user),
 ) -> list[SpeakerOut]:
-    project = await container.projects.get(session, project_id)
+    project = await container.projects.get(session, project_id, _owner(user))
     speakers = await container.projects.set_speaker_roster(
         session, project, payload.count
     )
@@ -157,10 +172,11 @@ async def create_speaker(
     payload: SpeakerCreate,
     session: AsyncSession = Depends(get_session),
     container: Container = Depends(get_container),
+    user: User | None = Depends(require_user),
 ) -> SpeakerOut:
     from app.infrastructure.db.models import Speaker
 
-    await container.projects.get(session, project_id)
+    await container.projects.get(session, project_id, _owner(user))
     if payload.voice_id is not None:
         await container.voices.require_voice(session, payload.voice_id)
 

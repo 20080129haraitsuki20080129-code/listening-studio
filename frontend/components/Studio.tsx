@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { LanguageToggle } from "@/components/LanguageToggle";
+import { SignOutButton } from "@/components/SignOutButton";
 import { ListeningPlayer } from "@/components/ListeningPlayer";
 import { StyledScriptEditor } from "@/components/StyledScriptEditor";
 import { VoiceSelector } from "@/components/VoiceSelector";
@@ -272,6 +273,7 @@ export function Studio({ projectId }: { projectId?: string }) {
             {t("app.allProjects")}
           </Link>
           <LanguageToggle />
+          <SignOutButton />
         </div>
       </header>
 

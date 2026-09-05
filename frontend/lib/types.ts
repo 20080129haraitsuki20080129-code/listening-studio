@@ -94,3 +94,19 @@ export type RenderJob = {
   duration_ms: number | null;
   error: { code: string; message: string } | null;
 };
+
+export type CurrentUser = {
+  id: string;
+  display_name: string;
+  email: string | null;
+  avatar_url: string | null;
+  auth_provider: string;
+};
+
+export type AuthStatus = {
+  authenticated: boolean;
+  /** False in a local checkout with no identity provider configured. */
+  auth_required: boolean;
+  providers: string[];
+  user: CurrentUser | null;
+};

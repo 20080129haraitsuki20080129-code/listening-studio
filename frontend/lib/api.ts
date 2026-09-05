@@ -1,4 +1,5 @@
 import type {
+  AuthStatus,
   Project,
   ProjectSummary,
   RenderJob,
@@ -29,6 +30,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   try {
     response = await fetch(`${BASE}${path}`, {
       ...init,
+      // The session is an httpOnly cookie the page cannot read, so it has to
+      // ride along on every request -- including cross-origin ones.
+      credentials: "include",
       headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
     });
   } catch {
@@ -67,7 +71,15 @@ export const downloadUrls = {
   transcript: (projectId: string) => `${BASE}/projects/${projectId}/transcript.pdf`,
 };
 
+/** Where the browser is sent to start a provider sign-in. */
+export function loginUrl(provider: string): string {
+  return `${BASE}/auth/${provider}/login`;
+}
+
 export const api = {
+  authStatus: () => request<AuthStatus>("/auth/status"),
+  logout: () => request<void>("/auth/logout", { method: "POST" }),
+
   health: () => request<{ status: string }>("/health"),
 
   listVoices: (params: Record<string, string> = {}) => {

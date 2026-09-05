@@ -20,6 +20,17 @@ const en = {
   "app.title": "Listening Studio",
   "app.allProjects": "All projects",
   "app.language": "Language",
+  "auth.signInTitle": "Sign in to Listening Studio",
+  "auth.signInBlurb": "Your projects are private to your account.",
+  "auth.withGoogle": "Continue with Google",
+  "auth.withX": "Continue with X",
+  "auth.signOut": "Sign out",
+  "auth.noProviders":
+    "No sign-in provider is configured on the server, so anyone can use this instance.",
+  "auth.checking": "Checking sign-in…",
+  "error.NOT_AUTHENTICATED": "Please sign in again.",
+  "error.FORBIDDEN": "That belongs to someone else.",
+  "error.AUTH_FAILED": "Sign-in did not complete. Please try again.",
 
   // Project list
   "projects.new": "New project",
@@ -181,6 +192,17 @@ const ja: Record<MessageKey, string> = {
   "app.title": "Listening Studio",
   "app.allProjects": "プロジェクト一覧",
   "app.language": "言語",
+  "auth.signInTitle": "Listening Studio にサインイン",
+  "auth.signInBlurb": "プロジェクトはアカウントごとに保護されます。",
+  "auth.withGoogle": "Google で続行",
+  "auth.withX": "X で続行",
+  "auth.signOut": "サインアウト",
+  "auth.noProviders":
+    "サーバーにサインイン方法が設定されていないため、誰でも利用できる状態です。",
+  "auth.checking": "サインイン状態を確認中…",
+  "error.NOT_AUTHENTICATED": "もう一度サインインしてください。",
+  "error.FORBIDDEN": "他の人のデータです。",
+  "error.AUTH_FAILED": "サインインが完了しませんでした。もう一度お試しください。",
 
   "projects.new": "新規プロジェクト",
   "projects.loading": "読み込み中…",

@@ -62,6 +62,23 @@ class Settings(BaseSettings):
     azure_speech_region: str = ""
     elevenlabs_api_key: str = ""
 
+    # ---- Authentication ----
+    # Signs the session cookie. Must be set to a long random value in
+    # production; a fixed default would let anyone forge a session.
+    session_secret: str = "dev-only-insecure-secret-change-me"
+    session_cookie_name: str = "listening_session"
+    session_max_age_seconds: int = 60 * 60 * 24 * 14
+    # Where the browser is sent back to after a provider redirect.
+    frontend_base_url: str = "http://localhost:3000"
+    # Cross-site cookies need SameSite=None; Secure, which requires HTTPS.
+    cookie_secure: bool = False
+    cookie_samesite: str = "lax"
+
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    x_client_id: str = ""
+    x_client_secret: str = ""
+
     app_env: str = "development"
     log_level: str = "INFO"
     max_script_chars: int = 50_000
@@ -69,6 +86,26 @@ class Settings(BaseSettings):
 
     ffmpeg_bin: str = "ffmpeg"
     ffprobe_bin: str = "ffprobe"
+
+    @property
+    def enabled_oauth_providers(self) -> list[str]:
+        """Providers with credentials configured, in display order."""
+        providers = []
+        if self.google_client_id and self.google_client_secret:
+            providers.append("google")
+        if self.x_client_id and self.x_client_secret:
+            providers.append("x")
+        return providers
+
+    @property
+    def auth_required(self) -> bool:
+        """Whether sign-in is enforced.
+
+        With no provider configured there is no way to sign in, so requiring it
+        would lock everyone out of a local checkout. Any configured provider
+        turns enforcement on.
+        """
+        return bool(self.enabled_oauth_providers)
 
     def resolve_espeak(self) -> tuple[str | None, str | None]:
         """Return (library_path, data_path), auto-detecting when unset."""

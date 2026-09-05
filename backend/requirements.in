@@ -9,6 +9,9 @@ pydantic-settings
 python-dotenv
 anyio
 httpx
+pyjwt
+authlib
+itsdangerous
 kokoro
 soundfile
 numpy

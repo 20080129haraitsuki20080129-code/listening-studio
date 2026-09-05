@@ -7,10 +7,10 @@ from fastapi import APIRouter, Depends, Header, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import Container, get_container
+from app.api.deps import Container, get_container, require_user
 from app.api.downloads import content_disposition, safe_filename
 from app.domain.errors import InvalidScript, NotFound
-from app.infrastructure.db.models import AudioAsset, RenderJob
+from app.infrastructure.db.models import AudioAsset, RenderJob, User
 from app.infrastructure.db.session import get_session
 from app.schemas.render import AudioAssetOut, RenderCreate, RenderOut
 
@@ -18,6 +18,10 @@ router = APIRouter(tags=["renders"])
 
 # Background tasks are garbage-collected if nothing holds a reference.
 _running: set[asyncio.Task] = set()
+
+
+def _owner(user: User | None) -> uuid.UUID | None:
+    return user.id if user else None
 
 
 async def _to_out(
@@ -54,8 +58,9 @@ async def create_render(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     session: AsyncSession = Depends(get_session),
     container: Container = Depends(get_container),
+    user: User | None = Depends(require_user),
 ) -> RenderOut:
-    await container.projects.get(session, project_id)
+    await container.projects.get(session, project_id, _owner(user))
 
     # Repeating a request with the same key must not start a second expensive
     # render (API.md); hand back the job already in flight.
@@ -94,10 +99,13 @@ async def get_render(
     render_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
     container: Container = Depends(get_container),
+    user: User | None = Depends(require_user),
 ) -> RenderOut:
     job = await session.get(RenderJob, render_id)
     if job is None:
         raise NotFound("The render does not exist.")
+    # A render id alone must not reveal somebody else's project.
+    await container.projects.get(session, job.project_id, _owner(user))
     return await _to_out(session, container, job)
 
 
@@ -106,10 +114,12 @@ async def cancel_render(
     render_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
     container: Container = Depends(get_container),
+    user: User | None = Depends(require_user),
 ) -> RenderOut:
     job = await session.get(RenderJob, render_id)
     if job is None:
         raise NotFound("The render does not exist.")
+    await container.projects.get(session, job.project_id, _owner(user))
     if job.status in ("queued", "running"):
         job.status = "cancelled"
         await session.commit()
@@ -117,11 +127,17 @@ async def cancel_render(
     return await _to_out(session, container, job)
 
 
+# Audio assets are content-addressed and deliberately shared: when two people
+# render the same sentence in the same voice, the cache hands them the same
+# row. Owner-scoping them would defeat that, so these two endpoints require
+# sign-in and then rely on the id being unguessable -- a capability URL, which
+# is the model SPEC section 17 anticipates with signed URLs.
 @router.get("/audio-assets/{audio_asset_id}", response_model=AudioAssetOut)
 async def get_audio_asset(
     audio_asset_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
     container: Container = Depends(get_container),
+    user: User | None = Depends(require_user),
 ) -> AudioAssetOut:
     asset = await session.get(AudioAsset, audio_asset_id)
     if asset is None:
@@ -142,6 +158,7 @@ async def download_render(
     render_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
     container: Container = Depends(get_container),
+    user: User | None = Depends(require_user),
 ) -> Response:
     """The finished audio, as an attachment named after the project."""
     job = await session.get(RenderJob, render_id)
@@ -154,7 +171,7 @@ async def download_render(
     if asset is None:
         raise NotFound("The rendered audio is no longer available.")
 
-    project = await container.projects.get(session, job.project_id)
+    project = await container.projects.get(session, job.project_id, _owner(user))
     data = await container.storage.get(asset.storage_key)
     filename = safe_filename(project.title, asset.format)
     return Response(
@@ -169,6 +186,7 @@ async def download_transcript(
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
     container: Container = Depends(get_container),
+    user: User | None = Depends(require_user),
 ) -> Response:
     """The script as a PDF, with speaker labels and per-segment durations."""
     from app.infrastructure.documents.transcript_pdf import (
@@ -176,7 +194,7 @@ async def download_transcript(
         build_transcript_pdf,
     )
 
-    project = await container.projects.get(session, project_id)
+    project = await container.projects.get(session, project_id, _owner(user))
     rows = await container.projects.transcript_lines(session, project)
     if not rows:
         raise InvalidScript("Parse the script before downloading a transcript.")

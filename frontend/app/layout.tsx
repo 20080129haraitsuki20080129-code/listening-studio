@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { AuthGate } from "@/components/AuthGate";
 import { HtmlLangSync } from "@/components/HtmlLangSync";
 
 import "./globals.css";
@@ -16,7 +17,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100">
         <HtmlLangSync />
-        {children}
+        <AuthGate>{children}</AuthGate>
       </body>
     </html>
   );

@@ -55,6 +55,50 @@ using plain, bold and underline stores A, B and D internally, and printing "D"
 with no C in sight would read as a mistake. Position also keeps the letters
 lined up with the editor's numbered slots, so Voice 3 is always C.
 
+## Signing in
+
+Projects belong to the person who made them. Sign-in is delegated to Google or
+X, so **no password is ever stored here** — there is no credential to leak.
+
+Configure either provider (both are free to register) and enforcement turns on:
+
+```bash
+# Google — https://console.cloud.google.com/apis/credentials
+#   Authorised redirect URI: <backend>/api/v1/auth/google/callback
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+
+# X — https://developer.x.com/en/portal/dashboard
+#   Callback URI: <backend>/api/v1/auth/x/callback
+X_CLIENT_ID=...
+X_CLIENT_SECRET=...
+
+SESSION_SECRET=$(openssl rand -hex 32)
+```
+
+With neither configured the app runs open, because there would be no way to
+sign in at all — convenient locally, never acceptable in production. The server
+**refuses to start** with `APP_ENV=production` while `SESSION_SECRET` is the
+default or `COOKIE_SECURE` is off.
+
+Accounts are keyed on (provider, account id), never on email: addresses change
+hands, and X does not release one at this scope, so matching on email could let
+two different people share an account.
+
+Projects created before sign-in existed have no owner and are simply
+unreachable once it is on, rather than falling to whoever asks first.
+
+### What is and is not protected
+
+Every project, segment, speaker and render is scoped to its owner — reading
+someone else's returns 403, and a segment id is not a way around it.
+
+Audio files are the deliberate exception. The TTS cache shares one rendered
+sentence between everyone who asks for the same text in the same voice, so an
+audio asset genuinely has no single owner. Those endpoints require sign-in and
+then rely on the id being an unguessable content hash — a capability URL, which
+is the model SPEC section 17 anticipates with signed URLs.
+
 ## Speed levels
 
 Generation speed is chosen as one of seven levels, labelled by the pace it

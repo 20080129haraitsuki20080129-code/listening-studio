@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { LanguageToggle } from "@/components/LanguageToggle";
+import { SignOutButton } from "@/components/SignOutButton";
 import { ApiError, api } from "@/lib/api";
 import { type MessageKey, useTranslation } from "@/lib/i18n";
 import type { ProjectSummary } from "@/lib/types";
@@ -48,6 +49,7 @@ export default function HomePage() {
         <h1 className="text-xl font-semibold">{t("app.title")}</h1>
         <div className="flex items-center gap-3">
           <LanguageToggle />
+          <SignOutButton />
           <Link href="/create" className="btn-primary">
             {t("projects.new")}
           </Link>

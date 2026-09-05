@@ -43,6 +43,8 @@ from app.domain.styled_parsing import (
 from app.domain.word_count import count_words
 
 PROVIDERS = ("openai", "azure", "elevenlabs", "kokoro")
+# Identity providers people can sign in with.
+AUTH_PROVIDERS = ("google", "x")
 MODES = ("monologue", "dialogue", "listening_test", "shadowing")
 GENDERS = ("female", "male", "neutral", "unknown")
 AGE_GROUPS = ("young", "adult", "mature", "unknown")
@@ -80,11 +82,48 @@ def _updated() -> Mapped[datetime]:
     )
 
 
+class User(Base):
+    """Someone who signed in through an identity provider.
+
+    No password is stored: authentication is delegated entirely, so there is
+    no credential here to leak. Email is nullable because X does not reliably
+    release it.
+    """
+
+    __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint(
+            "auth_provider", "provider_account_id", name="uq_users_provider_account"
+        ),
+        CheckConstraint(
+            _in("auth_provider", AUTH_PROVIDERS), name="ck_users_auth_provider"
+        ),
+        Index("idx_users_email", "email"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    auth_provider: Mapped[str] = mapped_column(Text, nullable=False)
+    provider_account_id: Mapped[str] = mapped_column(Text, nullable=False)
+    email: Mapped[str | None] = mapped_column(Text, nullable=True)
+    display_name: Mapped[str] = mapped_column(Text, nullable=False)
+    avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = _created()
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class Project(Base):
     __tablename__ = "projects"
     __table_args__ = (CheckConstraint(_in("mode", MODES), name="ck_projects_mode"),)
 
     id: Mapped[uuid.UUID] = _pk()
+    # Nullable so the column can be added without discarding projects made
+    # before sign-in existed. Those have no owner and are simply not reachable
+    # once authentication is on.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True
+    )
     title: Mapped[str] = mapped_column(Text, nullable=False)
     mode: Mapped[str] = mapped_column(Text, nullable=False)
     source_text: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
