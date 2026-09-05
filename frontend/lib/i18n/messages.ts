@@ -47,7 +47,14 @@ const en = {
 
   // Settings panel
   "settings.speedLevel": "Speed",
-  "settings.speedLevelValue": "Level {level} · about {min}-{max} words/min",
+  "settings.speedTypical": "about {wpm} words/min",
+  "settings.speedSpread": "{min}-{max} depending on the voice",
+  "settings.speedRef.exam": "university entrance exam",
+  "settings.speedRef.news": "native news broadcast",
+  "settings.speedRef.argument": "heated native argument",
+  "settings.actualWpm": "Measured: {wpm} words/min",
+  "settings.actualWpmHint": "From the rendered audio, speech only.",
+  "settings.speedLevelValue": "Level {level} · about {wpm} words/min",
   "settings.speedLevelHint":
     "Approximate pace, measured on the built-in voices. Playback rate is separate.",
   "settings.repeatCount": "Repeat the passage",
@@ -197,7 +204,14 @@ const ja: Record<MessageKey, string> = {
   "mode.dialogue": "会話",
 
   "settings.speedLevel": "話速",
-  "settings.speedLevelValue": "レベル{level} · 約 {min}〜{max} 語/分",
+  "settings.speedTypical": "約 {wpm} 語/分",
+  "settings.speedSpread": "声により {min}〜{max}",
+  "settings.speedRef.exam": "大学入試リスニング",
+  "settings.speedRef.news": "英語ニュース",
+  "settings.speedRef.argument": "ネイティブの口論",
+  "settings.actualWpm": "実測: {wpm} 語/分",
+  "settings.actualWpmHint": "生成された音声の発話部分から算出",
+  "settings.speedLevelValue": "レベル{level} · 約 {wpm} 語/分",
   "settings.speedLevelHint":
     "内蔵音声で実測したおおよその速さです。再生速度とは別の設定です。",
   "settings.repeatCount": "本文の繰り返し",

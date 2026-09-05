@@ -34,6 +34,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from app.domain.speed_levels import measured_wpm
 from app.domain.styled_parsing import (
     STYLE_NAMES,
     looks_styled,
@@ -122,6 +123,17 @@ class Project(Base):
     def word_count(self) -> int:
         """Words across the parsed script, counted once per pass."""
         return sum(count_words(segment.text) for segment in self.segments)
+
+    @property
+    def actual_wpm(self) -> float | None:
+        """The pace actually achieved, once the segments have been rendered.
+
+        Measured over speech only: the sum of the segment durations excludes
+        the pauses between them and any repeat gaps, which are silence and
+        would otherwise understate how fast the voice is speaking.
+        """
+        speech_ms = sum(segment.duration_ms or 0 for segment in self.segments)
+        return measured_wpm(self.word_count, speech_ms)
 
     @property
     def styled_dialogue(self) -> bool:

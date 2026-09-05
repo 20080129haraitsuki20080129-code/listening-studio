@@ -51,8 +51,10 @@ class SpeakerUpdate(ApiModel):
 class SpeedLevelOut(ApiModel):
     level: int
     speed: float
+    wpm_typical: int
     wpm_min: int
     wpm_max: int
+    reference: str | None = None
 
 
 class SpeedLevelListOut(ApiModel):
@@ -116,6 +118,7 @@ class ProjectOut(ApiModel):
     repeat_count: int
     pause_between_repeats_ms: int
     word_count: int = 0
+    actual_wpm: float | None = None
     created_at: datetime
     updated_at: datetime
     speakers: list[SpeakerOut] = Field(default_factory=list)

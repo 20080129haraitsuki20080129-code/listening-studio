@@ -44,34 +44,72 @@ class TestSpeedLevels:
         assert len(SPEED_LEVELS) == 7
         assert [level.level for level in SPEED_LEVELS] == [1, 2, 3, 4, 5, 6, 7]
 
-    def test_speed_and_wpm_both_increase(self):
+    def test_speed_and_pace_both_increase(self):
         speeds = [level.speed for level in SPEED_LEVELS]
         assert speeds == sorted(speeds)
-        mins = [level.wpm_min for level in SPEED_LEVELS]
-        assert mins == sorted(mins)
+        typical = [level.wpm_typical for level in SPEED_LEVELS]
+        assert typical == sorted(typical)
+        assert len(set(typical)) == len(typical)
 
-    def test_bands_are_contiguous(self):
-        # A gap between bands would leave a pace the scale cannot express.
-        for lower, upper in pairwise(SPEED_LEVELS):
-            assert lower.wpm_max >= upper.wpm_min
+    def test_each_level_reports_the_spread_across_voices(self):
+        # Voices differ by around 20 wpm at the same multiplier, which is more
+        # than the gap between neighbouring levels, so a level advertises a
+        # typical pace and the observed spread rather than a tidy band.
+        for level in SPEED_LEVELS:
+            assert level.wpm_min < level.wpm_typical < level.wpm_max
 
-    def test_stops_before_the_discontinuity(self):
-        # Kokoro jumps from ~176 wpm at 1.30 to ~213 at 1.40, so a level above
-        # 1.30 would not sit evenly between its neighbours.
-        assert max(level.speed for level in SPEED_LEVELS) == pytest.approx(1.30)
+    def test_the_anchors_are_where_the_scale_is_calibrated(self):
+        by_reference = {
+            level.reference: level for level in SPEED_LEVELS if level.reference
+        }
+        assert set(by_reference) == {"exam", "news", "argument"}
+        # The centre is exam pace, the top is a heated argument.
+        assert by_reference["exam"].level == DEFAULT_LEVEL == 4
+        assert by_reference["news"].level == 6
+        assert by_reference["argument"].level == max(
+            level.level for level in SPEED_LEVELS
+        )
+        assert by_reference["exam"].wpm_typical == pytest.approx(150, abs=6)
+        assert 160 <= by_reference["news"].wpm_typical <= 185
+        assert by_reference["argument"].wpm_typical >= 200
 
-    def test_default_is_the_middle_level(self):
-        assert DEFAULT_LEVEL == 4
-        assert speed_for_level(DEFAULT_LEVEL) == pytest.approx(1.0)
+    def test_only_the_two_end_levels_sit_outside_the_smooth_stretch(self):
+        # Kokoro's pace steps up sharply between 0.80/0.84 and again between
+        # 1.33/1.34. The middle levels sit inside that stretch; the two ends
+        # sit outside it deliberately, because neither a slow practice pace
+        # nor argument pace is reachable within it.
+        middle = [level for level in SPEED_LEVELS if 2 <= level.level <= 6]
+        assert all(0.84 <= level.speed <= 1.33 for level in middle)
+        assert speed_for_level(1) < 0.84
+        assert speed_for_level(7) > 1.33
+
+    def test_the_jump_to_the_top_level_is_the_largest(self):
+        steps = [
+            upper.wpm_typical - lower.wpm_typical
+            for lower, upper in pairwise(SPEED_LEVELS)
+        ]
+        # No multiplier produces the ~195 wpm between level 6 and 7.
+        assert steps[-1] == max(steps)
+
+    def test_default_is_the_middle_level_and_the_exam_anchor(self):
+        levels = [level.level for level in SPEED_LEVELS]
+        assert DEFAULT_LEVEL == levels[len(levels) // 2] == 4
+        default = next(entry for entry in SPEED_LEVELS if entry.level == DEFAULT_LEVEL)
+        assert default.reference == "exam"
 
     @pytest.mark.parametrize(
         "speed,expected",
-        [(0.70, 1), (0.95, 3), (1.0, 4), (1.24, 6), (1.30, 7), (1.4, 7), (0.1, 1)],
+        [(0.76, 1), (0.70, 1), (0.90, 3), (1.08, 4), (1.30, 6), (1.34, 7), (2.0, 7)],
     )
     def test_stored_speed_maps_to_the_nearest_level(self, speed, expected):
-        # Projects store a multiplier, including values saved before these
-        # presets existed, so every one must land on a level.
+        # Projects store a multiplier, including values saved under an older
+        # scale, so every one must land on a level.
         assert level_for_speed(speed).level == expected
+
+    def test_a_multiplier_between_two_levels_resolves_to_the_slower_one(self):
+        # 1.00 is equidistant from level 3 (0.92) and level 4 (1.08). Erring
+        # towards the easier pace is the kinder default for a listener.
+        assert level_for_speed(1.00).level == 3
 
     def test_unknown_level_is_rejected(self):
         with pytest.raises(ValueError):
@@ -201,3 +239,76 @@ class TestRepeat:
         assert (
             await client.patch(f"/projects/{pid}", json={"repeat_count": 99})
         ).status_code == 422
+
+
+class TestActualWpm:
+    """The advertised band is an estimate; the rendered result is the fact."""
+
+    async def _rendered_project(self, client) -> dict:
+        import asyncio
+
+        await client.post("/voices/sync")
+        voices = (await client.get("/voices")).json()["items"]
+        pid = (
+            await client.post(
+                "/projects",
+                json={
+                    "title": "pace",
+                    "mode": "monologue",
+                    "source_text": "One two three four five. Six seven eight nine ten.",
+                },
+            )
+        ).json()["id"]
+        await client.patch(
+            f"/projects/{pid}", json={"default_voice_id": voices[0]["id"]}
+        )
+        await client.post(f"/projects/{pid}/parse", json={})
+
+        job = (await client.post(f"/projects/{pid}/renders", json={})).json()
+        for _ in range(200):
+            job = (await client.get(f"/renders/{job['id']}")).json()
+            if job["status"] in ("completed", "failed"):
+                break
+            await asyncio.sleep(0.1)
+        assert job["status"] == "completed", job.get("error")
+        return (await client.get(f"/projects/{pid}")).json()
+
+    async def test_absent_until_the_project_is_rendered(self, client):
+        pid = (
+            await client.post(
+                "/projects",
+                json={"title": "p", "mode": "monologue", "source_text": "One two."},
+            )
+        ).json()["id"]
+        await client.post(f"/projects/{pid}/parse", json={})
+        # Nothing has been spoken yet, so there is no rate to report.
+        assert (await client.get(f"/projects/{pid}")).json()["actual_wpm"] is None
+
+    async def test_reported_once_rendered(self, client):
+        project = await self._rendered_project(client)
+        assert project["actual_wpm"] is not None
+        assert project["actual_wpm"] > 0
+
+    async def test_matches_words_over_speech_time(self, client):
+        project = await self._rendered_project(client)
+        speech_ms = sum(s["duration_ms"] for s in project["segments"])
+        expected = project["word_count"] / (speech_ms / 60_000)
+        assert project["actual_wpm"] == pytest.approx(expected, rel=1e-6)
+
+    async def test_pauses_and_repeats_do_not_drag_the_rate_down(self, client):
+        """Silence is not speech, so it must not count against the pace."""
+        project = await self._rendered_project(client)
+        baseline = project["actual_wpm"]
+
+        # Add long pauses and a second hearing; the speaking rate is unchanged.
+        await client.patch(
+            f"/projects/{project['id']}",
+            json={"repeat_count": 2, "pause_between_repeats_ms": 10_000},
+        )
+        for segment in project["segments"]:
+            await client.patch(
+                f"/segments/{segment['id']}", json={"pause_after_ms": 5000}
+            )
+        # Editing pause_after does not invalidate audio, so durations survive.
+        again = (await client.get(f"/projects/{project['id']}")).json()
+        assert again["actual_wpm"] == pytest.approx(baseline, rel=1e-6)

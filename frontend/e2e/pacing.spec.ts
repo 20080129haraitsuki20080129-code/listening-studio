@@ -3,23 +3,52 @@ import { expect, test } from "@playwright/test";
 test.use({ locale: "en-US" });
 
 test.describe("speed levels", () => {
-  test("seven levels, each labelled by a words-per-minute band", async ({
-    page,
-  }) => {
+  test("seven levels, each labelled by a pace", async ({ page }) => {
     await page.goto("/create");
     const slider = page.getByLabel("Speed");
     await expect(slider).toHaveAttribute("min", "1");
     await expect(slider).toHaveAttribute("max", "7");
 
-    // A bare multiplier says nothing about pace; a band is something you can
-    // aim at.
-    await expect(page.getByText(/Level 4 · about 140-150 words\/min/)).toBeVisible();
+    // A bare multiplier says nothing about pace. The exact figures come from
+    // measurement and are expected to change, so assert the shape, not the
+    // numbers.
+    for (const level of ["1", "4", "7"]) {
+      await slider.fill(level);
+      await expect(
+        page.getByText(new RegExp(`Level ${level} · about \\d+ words/min`)),
+      ).toBeVisible();
+      await expect(
+        page.getByText(/\d+-\d+ depending on the voice/),
+      ).toBeVisible();
+    }
+  });
 
-    await slider.fill("1");
-    await expect(page.getByText(/Level 1 · about 95-105 words\/min/)).toBeVisible();
+  test("the scale is anchored to recognisable material", async ({ page }) => {
+    await page.goto("/create");
+    const slider = page.getByLabel("Speed");
+
+    // The middle of the scale is exam pace and the top is a heated argument;
+    // that is what makes the scale mean something.
+    await slider.fill("4");
+    await expect(page.getByText("university entrance exam")).toBeVisible();
 
     await slider.fill("7");
-    await expect(page.getByText(/Level 7 · about 170-185 words\/min/)).toBeVisible();
+    await expect(page.getByText("heated native argument")).toBeVisible();
+  });
+
+  test("pace rises with every level", async ({ page }) => {
+    await page.goto("/create");
+    const slider = page.getByLabel("Speed");
+    const paces: number[] = [];
+    for (let level = 1; level <= 7; level++) {
+      await slider.fill(String(level));
+      const text = await page
+        .getByText(/Level \d · about \d+ words\/min/)
+        .innerText();
+      paces.push(Number(text.match(/about (\d+)/)![1]));
+    }
+    expect(paces).toEqual([...paces].sort((a, b) => a - b));
+    expect(new Set(paces).size).toBe(7);
   });
 
   test("the chosen level survives a reload", async ({ page }) => {
@@ -31,7 +60,7 @@ test.describe("speed levels", () => {
     await expect(page.getByText(/Segments \(/)).toBeVisible();
 
     await page.reload();
-    await expect(page.getByText(/Level 2 · about 105-125 words\/min/)).toBeVisible();
+    await expect(page.getByLabel("Speed")).toHaveValue("2");
   });
 });
 
@@ -104,5 +133,46 @@ test.describe("repeat", () => {
     const twice = await durationFor("2");
     // Two hearings plus a one-second gap.
     expect(twice).toBeGreaterThan(once * 1.8);
+  });
+});
+
+test.describe("measured pace", () => {
+  test("reported only after a render, and taken from the audio", async ({
+    page,
+  }) => {
+    await page.goto("/create");
+    await page.getByLabel("Project title").fill("Measured");
+    await page
+      .getByLabel("English script")
+      .fill(
+        "Climate change is altering migration patterns across the world. " +
+          "Researchers say the shift is accelerating in every region they studied.",
+      );
+    await page.getByRole("button", { name: "Save & parse" }).click();
+    await expect(page.getByText(/Segments \(/)).toBeVisible();
+
+    // Nothing has been spoken yet, so there is no rate to report.
+    await expect(page.getByText(/Measured:/)).toHaveCount(0);
+
+    await page.getByLabel("Accent").first().selectOption("british");
+    const card = page.locator("ul").first().locator("li button").first();
+    await card.click();
+    await expect(card).toHaveAttribute("aria-pressed", "true");
+
+    const generate = page.getByRole("button", { name: "Generate audio" });
+    await expect(generate).toBeEnabled();
+    await generate.click();
+    await expect(page.getByRole("button", { name: "Play" })).toBeVisible({
+      timeout: 180_000,
+    });
+
+    const measured = page.getByText(/Measured: \d+ words\/min/);
+    await expect(measured).toBeVisible();
+
+    // The advertised band is an estimate; this is the fact. It should at
+    // least be a plausible speaking rate.
+    const wpm = Number((await measured.innerText()).match(/(\d+)/)![1]);
+    expect(wpm).toBeGreaterThan(60);
+    expect(wpm).toBeLessThan(400);
   });
 });

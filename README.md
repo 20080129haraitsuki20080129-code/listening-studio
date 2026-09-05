@@ -17,8 +17,9 @@ cost, no network round trip.
 - 28 voices across American and British English, filterable by accent and gender
 - Up to 8 speakers, one per style combination
 - Per-speaker voice and speed
-- Seven speed levels labelled by pace in words per minute, separate from the
-  browser-only playback rate
+- Seven speed levels labelled by pace, anchored to exam, news and argument
+  speech, separate from the browser-only playback rate
+- The pace actually achieved is measured from the rendered audio and reported
 - Repeat the passage up to five times with a configurable gap
 - Word counts per segment and per script
 - MP3 render with inter-segment pauses and EBU R128 loudness normalization
@@ -56,30 +57,47 @@ lined up with the editor's numbered slots, so Voice 3 is always C.
 
 ## Speed levels
 
-Generation speed is chosen as one of seven levels, each labelled by the pace it
-produces rather than by a bare multiplier:
+Generation speed is chosen as one of seven levels, labelled by the pace it
+produces and anchored to material people recognise:
 
-| Level | Multiplier | Pace |
-|---|---|---|
-| 1 | 0.70 | 95–105 wpm |
-| 2 | 0.80 | 105–125 wpm |
-| 3 | 0.90 | 125–140 wpm |
-| 4 | 1.00 | 140–150 wpm (default) |
-| 5 | 1.10 | 150–160 wpm |
-| 6 | 1.20 | 160–170 wpm |
-| 7 | 1.30 | 170–185 wpm |
+| Level | Multiplier | Typical pace | Varies by voice | Anchor |
+|---|---|---|---|---|
+| 1 | 0.76 | 105 wpm | 96–110 | |
+| 2 | 0.84 | 124 wpm | 111–131 | |
+| 3 | 0.92 | 135 wpm | 121–142 | |
+| 4 | 1.08 | 150 wpm | 136–156 | university entrance exam (default) |
+| 5 | 1.16 | 158 wpm | 143–165 | |
+| 6 | 1.30 | 175 wpm | 162–183 | native news broadcast |
+| 7 | 1.34 | 203 wpm | 181–214 | heated native argument |
 
-The bands are **measured, not assumed** — SPEC section 11 is explicit that
-provider differences make WPM something you measure. They come from timing a
-47-word passage on Kokoro with two voices, and the ranges bracket both because
-voices differ by a few words per minute at the same multiplier.
+The anchor figures are widely cited approximations, not published standards.
 
-The scale stops at 1.30 because Kokoro's pace jumps discontinuously above it:
-1.30 gives about 176 wpm and 1.40 about 213, so a level there would not sit
-evenly between its neighbours.
+Everything else is **measured, not assumed** — SPEC section 11 is explicit that
+provider differences make WPM something you measure. The figures come from a
+127-word passage read by four Kokoro voices, synthesized one sentence at a time
+exactly as the render pipeline does.
+
+Three things measurement showed, which shape the scale:
+
+- **Voices differ by about 20 wpm** at the same multiplier — more than the gap
+  between neighbouring levels. So a level advertises a typical pace and the
+  observed spread, and the app reports the **actual** rate once rendered.
+- **Kokoro's response is not linear**, so the multipliers are not evenly
+  spaced; they were picked so the resulting pace lands on the anchors. Pace
+  also steps up sharply between 1.30 and 1.34 (175 to 203 wpm), which is why
+  the gap from level 6 to 7 is the widest — no multiplier gives the ~190 wpm
+  in between.
+- **Very short passages come out slower than the label.** Each utterance
+  carries fixed overhead, and with few words there is little to amortize it
+  over: at multiplier 1.00, 9 words gives 127 wpm, 29 words 142, and it is
+  flat from there through 127 words. The labels describe passages of a
+  sentence or two upward, which is what listening material actually is.
+
+Measured against the running app with a 5-sentence passage, levels 1, 4, 6 and
+7 came out at 109, 155, 181 and 211 wpm — each inside its advertised spread.
 
 The levels are served from `GET /speed-levels` rather than hard-coded in the
-UI, because the bands describe the speech engine; a different engine would need
+UI, because they describe the speech engine; a different engine would need
 different ones.
 
 ## Interface language

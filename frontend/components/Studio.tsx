@@ -396,8 +396,7 @@ export function Studio({ projectId }: { projectId?: string }) {
                 currentLevel
                   ? t("settings.speedLevelValue", {
                       level: currentLevel.level,
-                      min: currentLevel.wpm_min,
-                      max: currentLevel.wpm_max,
+                      wpm: currentLevel.wpm_typical,
                     })
                   : String(speedLevel)
               }
@@ -409,17 +408,41 @@ export function Studio({ projectId }: { projectId?: string }) {
               ))}
             </div>
             {currentLevel && (
-              <p className="text-sm font-medium tabular-nums">
-                {t("settings.speedLevelValue", {
-                  level: currentLevel.level,
-                  min: currentLevel.wpm_min,
-                  max: currentLevel.wpm_max,
-                })}
-              </p>
+              <>
+                <p className="text-sm font-medium tabular-nums">
+                  {t("settings.speedLevelValue", {
+                    level: currentLevel.level,
+                    wpm: currentLevel.wpm_typical,
+                  })}
+                  {currentLevel.reference && (
+                    <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-normal dark:bg-slate-800">
+                      {t(
+                        `settings.speedRef.${currentLevel.reference}` as MessageKey,
+                      )}
+                    </span>
+                  )}
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {t("settings.speedSpread", {
+                    min: currentLevel.wpm_min,
+                    max: currentLevel.wpm_max,
+                  })}
+                </p>
+              </>
             )}
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {t("settings.speedLevelHint")}
             </p>
+            {/* The level advertises an estimate; this is what the render
+                actually produced. */}
+            {project?.actual_wpm != null && (
+              <p className="mt-1 text-sm font-medium tabular-nums text-slate-700 dark:text-slate-300">
+                {t("settings.actualWpm", { wpm: Math.round(project.actual_wpm) })}
+                <span className="ml-2 text-xs font-normal text-slate-500 dark:text-slate-400">
+                  {t("settings.actualWpmHint")}
+                </span>
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">

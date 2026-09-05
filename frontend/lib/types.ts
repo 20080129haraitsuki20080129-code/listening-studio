@@ -47,8 +47,13 @@ export type Segment = {
 export type SpeedLevel = {
   level: number;
   speed: number;
+  /** Mean across the measured voices. */
+  wpm_typical: number;
+  /** Slowest and fastest measured voice at this multiplier. */
   wpm_min: number;
   wpm_max: number;
+  /** Listening material this level is calibrated against, if any. */
+  reference: "exam" | "news" | "argument" | null;
 };
 
 export type Project = {
@@ -66,6 +71,8 @@ export type Project = {
   repeat_count: number;
   pause_between_repeats_ms: number;
   word_count: number;
+  /** Pace actually achieved, once rendered. Null before that. */
+  actual_wpm: number | null;
   created_at: string;
   updated_at: string;
   speakers: Speaker[];

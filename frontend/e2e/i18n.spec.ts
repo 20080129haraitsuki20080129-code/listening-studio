@@ -17,7 +17,10 @@ test.describe("language switching", () => {
     await expect(page.getByRole("button", { name: "単読" })).toBeVisible();
     await expect(page.getByRole("button", { name: "会話" })).toBeVisible();
     await expect(page.getByText("話速")).toBeVisible();
-    await expect(page.getByText(/レベル4 · 約 140〜150 語\/分/)).toBeVisible();
+    // The pace figures come from measurement and change when recalibrated, so
+    // assert the shape rather than the numbers.
+    await expect(page.getByText(/レベル\d · 約 \d+ 語\/分/)).toBeVisible();
+    await expect(page.getByText("大学入試リスニング")).toBeVisible();
 
     // Accent options come from the API but are labelled from the catalog.
     await expect(
