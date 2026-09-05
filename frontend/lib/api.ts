@@ -4,6 +4,7 @@ import type {
   RenderJob,
   Segment,
   Speaker,
+  SpeedLevel,
   Voice,
 } from "./types";
 
@@ -78,6 +79,9 @@ export const api = {
       "/voices/sync",
       { method: "POST" },
     ),
+
+  speedLevels: () =>
+    request<{ items: SpeedLevel[]; default_level: number }>("/speed-levels"),
 
   listProjects: () => request<ProjectSummary[]>("/projects"),
   getProject: (id: string) => request<Project>(`/projects/${id}`),

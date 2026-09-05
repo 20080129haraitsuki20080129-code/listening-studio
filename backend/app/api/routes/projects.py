@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import Container, get_container
+from app.domain.speed_levels import DEFAULT_LEVEL, SPEED_LEVELS
 from app.infrastructure.db.session import get_session
 from app.schemas.project import (
     ParsedSegmentOut,
@@ -19,9 +20,24 @@ from app.schemas.project import (
     SpeakerCreate,
     SpeakerOut,
     SpeakerRosterSet,
+    SpeedLevelListOut,
+    SpeedLevelOut,
 )
 
 router = APIRouter(tags=["projects"])
+
+
+@router.get("/speed-levels", response_model=SpeedLevelListOut)
+async def list_speed_levels() -> SpeedLevelListOut:
+    """The seven generation-speed presets, labelled by words per minute.
+
+    Served rather than hard-coded in the UI because the bands were measured
+    against the speech engine; a different engine would need different ones.
+    """
+    return SpeedLevelListOut(
+        items=[SpeedLevelOut.model_validate(level) for level in SPEED_LEVELS],
+        default_level=DEFAULT_LEVEL,
+    )
 
 
 @router.post("/projects", response_model=ProjectOut, status_code=201)

@@ -190,6 +190,7 @@ async def download_transcript(
             for i, speaker, text, duration in rows
         ],
         total_duration_ms=total,
+        word_count=project.word_count,
     )
     filename = safe_filename(project.title, "pdf")
     return Response(

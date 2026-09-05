@@ -16,7 +16,8 @@ test.describe("language switching", () => {
     await expect(page.getByRole("button", { name: "保存して解析" })).toBeVisible();
     await expect(page.getByRole("button", { name: "単読" })).toBeVisible();
     await expect(page.getByRole("button", { name: "会話" })).toBeVisible();
-    await expect(page.getByText("生成時の話速")).toBeVisible();
+    await expect(page.getByText("話速")).toBeVisible();
+    await expect(page.getByText(/レベル4 · 約 140〜150 語\/分/)).toBeVisible();
 
     // Accent options come from the API but are labelled from the catalog.
     await expect(

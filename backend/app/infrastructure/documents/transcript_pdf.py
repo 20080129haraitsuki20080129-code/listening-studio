@@ -64,6 +64,7 @@ def build_transcript_pdf(
     mode: str,
     lines: list[TranscriptLine],
     total_duration_ms: int | None = None,
+    word_count: int | None = None,
 ) -> bytes:
     cjk = _ensure_cjk_font()
     styles = getSampleStyleSheet()
@@ -104,10 +105,12 @@ def build_transcript_pdf(
 
     story = [Paragraph(_escape(title), title_style)]
 
-    meta = mode
+    meta_parts = [mode]
+    if word_count:
+        meta_parts.append(f"{word_count} words")
     if total_duration_ms:
-        meta = f"{mode} · {_format_duration(total_duration_ms)}"
-    story.append(Paragraph(_escape(meta), meta_style))
+        meta_parts.append(_format_duration(total_duration_ms))
+    story.append(Paragraph(_escape(" · ".join(meta_parts)), meta_style))
 
     for line in lines:
         header_bits = [f"{line.index}."]

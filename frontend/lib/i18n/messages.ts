@@ -46,9 +46,17 @@ const en = {
   "mode.dialogue": "Dialogue",
 
   // Settings panel
-  "settings.generationSpeed": "Generation speed: {speed}×",
-  "settings.generationSpeedHint":
-    "Applied when the audio is generated. Playback rate is separate.",
+  "settings.speedLevel": "Speed",
+  "settings.speedLevelValue": "Level {level} · about {min}-{max} words/min",
+  "settings.speedLevelHint":
+    "Approximate pace, measured on the built-in voices. Playback rate is separate.",
+  "settings.repeatCount": "Repeat the passage",
+  "settings.repeatOnce": "Once",
+  "settings.repeatTimes": "{n} times",
+  "settings.repeatGap": "Gap between repeats",
+  "settings.seconds": "{n}s",
+  "settings.words": "{n} words",
+
   "settings.voice": "Voice",
   "settings.speaker": "Speaker {label}",
   "settings.saveFirst": "Save the project first to pick a voice.",
@@ -188,9 +196,17 @@ const ja: Record<MessageKey, string> = {
   "mode.monologue": "単読",
   "mode.dialogue": "会話",
 
-  "settings.generationSpeed": "生成時の話速: {speed}×",
-  "settings.generationSpeedHint":
-    "音声生成時に適用されます。再生速度とは別の設定です。",
+  "settings.speedLevel": "話速",
+  "settings.speedLevelValue": "レベル{level} · 約 {min}〜{max} 語/分",
+  "settings.speedLevelHint":
+    "内蔵音声で実測したおおよその速さです。再生速度とは別の設定です。",
+  "settings.repeatCount": "本文の繰り返し",
+  "settings.repeatOnce": "1回",
+  "settings.repeatTimes": "{n}回",
+  "settings.repeatGap": "繰り返しの間隔",
+  "settings.seconds": "{n}秒",
+  "settings.words": "{n}語",
+
   "settings.voice": "声",
   "settings.speaker": "話者 {label}",
   "settings.saveFirst": "声を選ぶには、先にプロジェクトを保存してください。",

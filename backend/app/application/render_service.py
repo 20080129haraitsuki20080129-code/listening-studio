@@ -228,6 +228,22 @@ class RenderService:
                 # progress visible to the polling client.
                 await session.commit()
 
+        # Hearing the passage more than once is how listening material is
+        # normally used, so the whole sequence repeats with a gap between
+        # hearings (SPEC section 4.3). Segment audio is reused rather than
+        # re-synthesized -- the cache already holds it.
+        repeats = max(1, int(project.repeat_count or 1))
+        if repeats > 1:
+            single_parts, single_gaps = list(parts), list(gaps)
+            for _ in range(repeats - 1):
+                for offset, part in enumerate(single_parts):
+                    parts.append(part)
+                    gaps.append(
+                        project.pause_between_repeats_ms
+                        if offset == 0
+                        else single_gaps[offset]
+                    )
+
         final_bytes = await self._ffmpeg.concat(
             parts, gaps, out_format=output_format, normalize=True
         )

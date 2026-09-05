@@ -39,6 +39,7 @@ from app.domain.styled_parsing import (
     looks_styled,
     mask_for_label,
 )
+from app.domain.word_count import count_words
 
 PROVIDERS = ("openai", "azure", "elevenlabs", "kokoro")
 MODES = ("monologue", "dialogue", "listening_test", "shadowing")
@@ -102,12 +103,25 @@ class Project(Base):
     paragraph_pause_ms: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="600"
     )
+    # How many times the whole passage is heard, and the silence between
+    # hearings (SPEC section 4.3).
+    repeat_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="1"
+    )
+    pause_between_repeats_ms: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="3000"
+    )
 
     created_at: Mapped[datetime] = _created()
     updated_at: Mapped[datetime] = _updated()
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    @property
+    def word_count(self) -> int:
+        """Words across the parsed script, counted once per pass."""
+        return sum(count_words(segment.text) for segment in self.segments)
 
     @property
     def styled_dialogue(self) -> bool:
@@ -282,6 +296,10 @@ class Segment(Base):
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = _created()
     updated_at: Mapped[datetime] = _updated()
+
+    @property
+    def word_count(self) -> int:
+        return count_words(self.text)
 
     project: Mapped[Project] = relationship(back_populates="segments")
 

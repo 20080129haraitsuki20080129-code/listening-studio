@@ -40,6 +40,15 @@ export type Segment = {
   pause_after_ms: number;
   audio_asset_id: string | null;
   duration_ms: number | null;
+  word_count: number;
+};
+
+/** A generation-speed preset, labelled by the pace it produces. */
+export type SpeedLevel = {
+  level: number;
+  speed: number;
+  wpm_min: number;
+  wpm_max: number;
 };
 
 export type Project = {
@@ -54,6 +63,9 @@ export type Project = {
   default_generation_speed: number;
   sentence_pause_ms: number;
   paragraph_pause_ms: number;
+  repeat_count: number;
+  pause_between_repeats_ms: number;
+  word_count: number;
   created_at: string;
   updated_at: string;
   speakers: Speaker[];

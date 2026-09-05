@@ -17,7 +17,10 @@ cost, no network round trip.
 - 28 voices across American and British English, filterable by accent and gender
 - Up to 8 speakers, one per style combination
 - Per-speaker voice and speed
-- Generation speed (server-side) separate from playback rate (browser-only)
+- Seven speed levels labelled by pace in words per minute, separate from the
+  browser-only playback rate
+- Repeat the passage up to five times with a configurable gap
+- Word counts per segment and per script
 - MP3 render with inter-segment pauses and EBU R128 loudness normalization
 - Player: seek, playback rate, A-B repeat, transcript show/hide
 - Projects save and reopen
@@ -50,6 +53,34 @@ The letters follow position rather than the stored label: a styled dialogue
 using plain, bold and underline stores A, B and D internally, and printing "D"
 with no C in sight would read as a mistake. Position also keeps the letters
 lined up with the editor's numbered slots, so Voice 3 is always C.
+
+## Speed levels
+
+Generation speed is chosen as one of seven levels, each labelled by the pace it
+produces rather than by a bare multiplier:
+
+| Level | Multiplier | Pace |
+|---|---|---|
+| 1 | 0.70 | 95–105 wpm |
+| 2 | 0.80 | 105–125 wpm |
+| 3 | 0.90 | 125–140 wpm |
+| 4 | 1.00 | 140–150 wpm (default) |
+| 5 | 1.10 | 150–160 wpm |
+| 6 | 1.20 | 160–170 wpm |
+| 7 | 1.30 | 170–185 wpm |
+
+The bands are **measured, not assumed** — SPEC section 11 is explicit that
+provider differences make WPM something you measure. They come from timing a
+47-word passage on Kokoro with two voices, and the ranges bracket both because
+voices differ by a few words per minute at the same multiplier.
+
+The scale stops at 1.30 because Kokoro's pace jumps discontinuously above it:
+1.30 gives about 176 wpm and 1.40 about 213, so a level there would not sit
+evenly between its neighbours.
+
+The levels are served from `GET /speed-levels` rather than hard-coded in the
+UI, because the bands describe the speech engine; a different engine would need
+different ones.
 
 ## Interface language
 

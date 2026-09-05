@@ -10,7 +10,7 @@ import { VoiceSelector } from "@/components/VoiceSelector";
 import { ApiError, api, downloadUrls } from "@/lib/api";
 import { type MessageKey, useDynamicLabel, useTranslation } from "@/lib/i18n";
 import { type StyleKey, styleClasses } from "@/lib/styles";
-import type { Mode, Project, RenderJob, Voice } from "@/lib/types";
+import type { Mode, Project, RenderJob, SpeedLevel, Voice } from "@/lib/types";
 
 // Styled sample: each line's formatting picks its speaker, so nothing has to
 // be typed to mark a turn.
@@ -31,7 +31,10 @@ export function Studio({ projectId }: { projectId?: string }) {
   const [mode, setMode] = useState<Mode>("monologue");
   const [sourceText, setSourceText] = useState(SAMPLE_MONOLOGUE);
   const [styled, setStyled] = useState(false);
-  const [speed, setSpeed] = useState(1.0);
+  const [speedLevels, setSpeedLevels] = useState<SpeedLevel[]>([]);
+  const [speedLevel, setSpeedLevel] = useState(4);
+  const [repeatCount, setRepeatCount] = useState(1);
+  const [repeatGapMs, setRepeatGapMs] = useState(3000);
   const [speakerCount, setSpeakerCount] = useState(2);
   const [transcriptVisible, setTranscriptVisible] = useState(true);
 
@@ -62,6 +65,8 @@ export function Studio({ projectId }: { projectId?: string }) {
 
   const loadVoices = useCallback(async () => {
     try {
+      const levels = await api.speedLevels();
+      setSpeedLevels(levels.items);
       let { items } = await api.listVoices({ enabled: "true" });
       // First run: the catalog is empty until the providers are imported.
       if (items.length === 0) {
@@ -85,7 +90,8 @@ export function Studio({ projectId }: { projectId?: string }) {
         setMode(p.mode);
         setSourceText(p.source_text);
         setStyled(p.styled_dialogue);
-        setSpeed(Number(p.default_generation_speed));
+        setRepeatCount(p.repeat_count);
+        setRepeatGapMs(p.pause_between_repeats_ms);
         if (p.speakers.length > 0) setSpeakerCount(p.speakers.length);
         setTranscriptVisible(p.transcript_visible_default);
       } catch (e) {
@@ -108,6 +114,19 @@ export function Studio({ projectId }: { projectId?: string }) {
     if (projectId) void loadProject(projectId);
   }, [projectId, loadProject]);
 
+  // A project stores a speed multiplier, so map it back onto the nearest
+  // preset once the presets have arrived. Without this a saved project always
+  // reopens showing the default level, whatever pace it was saved at.
+  useEffect(() => {
+    if (!project || speedLevels.length === 0) return;
+    const stored = Number(project.default_generation_speed);
+    const nearest = speedLevels.reduce((best, entry) =>
+      Math.abs(entry.speed - stored) < Math.abs(best.speed - stored) ? entry : best,
+    );
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSpeedLevel(nearest.level);
+  }, [project, speedLevels]);
+
   useEffect(() => () => {
     if (pollRef.current) clearInterval(pollRef.current);
   }, []);
@@ -126,10 +145,13 @@ export function Studio({ projectId }: { projectId?: string }) {
         });
         window.history.replaceState(null, "", `/projects/${current.id}`);
       }
+      const chosen = speedLevels.find((entry) => entry.level === speedLevel);
       await api.updateProject(current.id, {
         title: effectiveTitle,
         mode,
-        default_generation_speed: speed,
+        default_generation_speed: chosen?.speed ?? 1.0,
+        repeat_count: repeatCount,
+        pause_between_repeats_ms: repeatGapMs,
         transcript_visible_default: transcriptVisible,
       });
       // Parsing owns the roster: the script says how many speakers there are,
@@ -148,7 +170,10 @@ export function Studio({ projectId }: { projectId?: string }) {
     title,
     mode,
     sourceText,
-    speed,
+    speedLevel,
+    speedLevels,
+    repeatCount,
+    repeatGapMs,
     transcriptVisible,
     loadProject,
     fail,
@@ -229,6 +254,8 @@ export function Studio({ projectId }: { projectId?: string }) {
       fail(e);
     }
   }, [project, loadProject, fail]);
+
+  const currentLevel = speedLevels.find((entry) => entry.level === speedLevel);
 
   const needsVoice =
     project &&
@@ -348,22 +375,98 @@ export function Studio({ projectId }: { projectId?: string }) {
 
         {/* Voice & audio settings */}
         <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          {/* Seven presets, labelled by pace rather than by a bare multiplier:
+              "about 140-150 words/min" is a thing you can aim at. */}
           <div>
-            <label className="mb-1 block text-sm font-medium">
-              {t("settings.generationSpeed", { speed: speed.toFixed(2) })}
+            <label
+              htmlFor="speed-level"
+              className="mb-1 block text-sm font-medium"
+            >
+              {t("settings.speedLevel")}
             </label>
             <input
+              id="speed-level"
               type="range"
-              min={0.7}
-              max={1.4}
-              step={0.05}
-              value={speed}
-              onChange={(e) => setSpeed(Number(e.target.value))}
+              min={1}
+              max={speedLevels.length || 7}
+              step={1}
+              value={speedLevel}
+              onChange={(e) => setSpeedLevel(Number(e.target.value))}
+              aria-valuetext={
+                currentLevel
+                  ? t("settings.speedLevelValue", {
+                      level: currentLevel.level,
+                      min: currentLevel.wpm_min,
+                      max: currentLevel.wpm_max,
+                    })
+                  : String(speedLevel)
+              }
               className="w-full accent-slate-900 dark:accent-slate-100"
             />
+            <div className="flex justify-between text-[10px] text-slate-400">
+              {(speedLevels.length ? speedLevels : []).map((entry) => (
+                <span key={entry.level}>{entry.level}</span>
+              ))}
+            </div>
+            {currentLevel && (
+              <p className="text-sm font-medium tabular-nums">
+                {t("settings.speedLevelValue", {
+                  level: currentLevel.level,
+                  min: currentLevel.wpm_min,
+                  max: currentLevel.wpm_max,
+                })}
+              </p>
+            )}
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {t("settings.generationSpeedHint")}
+              {t("settings.speedLevelHint")}
             </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label
+                htmlFor="repeat-count"
+                className="mb-1 block text-sm font-medium"
+              >
+                {t("settings.repeatCount")}
+              </label>
+              <select
+                id="repeat-count"
+                value={repeatCount}
+                onChange={(e) => setRepeatCount(Number(e.target.value))}
+                className="field w-full"
+              >
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <option key={n} value={n}>
+                    {n === 1
+                      ? t("settings.repeatOnce")
+                      : t("settings.repeatTimes", { n })}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label
+                htmlFor="repeat-gap"
+                className="mb-1 block text-sm font-medium"
+              >
+                {t("settings.repeatGap")}
+              </label>
+              <select
+                id="repeat-gap"
+                value={repeatGapMs}
+                onChange={(e) => setRepeatGapMs(Number(e.target.value))}
+                disabled={repeatCount === 1}
+                className="field w-full disabled:opacity-40"
+              >
+                {[1000, 2000, 3000, 5000, 8000, 10000].map((ms) => (
+                  <option key={ms} value={ms}>
+                    {t("settings.seconds", { n: ms / 1000 })}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {mode === "dialogue" ? (
@@ -453,8 +556,11 @@ export function Studio({ projectId }: { projectId?: string }) {
       {/* Segments */}
       {project && project.segments.length > 0 && (
         <section className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-          <h2 className="mb-2 text-sm font-semibold">
+          <h2 className="mb-2 flex items-baseline gap-2 text-sm font-semibold">
             {t("segments.heading", { count: project.segments.length })}
+            <span className="font-normal text-slate-500 dark:text-slate-400">
+              {t("settings.words", { n: project.word_count })}
+            </span>
           </h2>
           <ol className="space-y-1 text-sm">
             {project.segments.map((segment) => {
@@ -476,6 +582,9 @@ export function Studio({ projectId }: { projectId?: string }) {
                   )}
                   <span className="flex-1">{segment.text}</span>
                   <span className="shrink-0 text-xs tabular-nums text-slate-400">
+                    {t("settings.words", { n: segment.word_count })}
+                  </span>
+                  <span className="w-12 shrink-0 text-right text-xs tabular-nums text-slate-400">
                     {segment.duration_ms
                       ? `${(segment.duration_ms / 1000).toFixed(1)}s`
                       : "—"}

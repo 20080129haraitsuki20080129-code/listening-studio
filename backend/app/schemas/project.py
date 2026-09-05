@@ -27,6 +27,8 @@ class ProjectUpdate(ApiModel):
     default_generation_speed: float | None = Field(default=None, gt=0, le=4.0)
     sentence_pause_ms: int | None = Field(default=None, ge=0, le=60_000)
     paragraph_pause_ms: int | None = Field(default=None, ge=0, le=60_000)
+    repeat_count: int | None = Field(default=None, ge=1, le=5)
+    pause_between_repeats_ms: int | None = Field(default=None, ge=0, le=60_000)
 
 
 class SpeakerCreate(ApiModel):
@@ -44,6 +46,18 @@ class SpeakerUpdate(ApiModel):
     generation_speed: float | None = Field(default=None, gt=0, le=4.0)
     default_pause_before_ms: int | None = Field(default=None, ge=0, le=60_000)
     default_pause_after_ms: int | None = Field(default=None, ge=0, le=60_000)
+
+
+class SpeedLevelOut(ApiModel):
+    level: int
+    speed: float
+    wpm_min: int
+    wpm_max: int
+
+
+class SpeedLevelListOut(ApiModel):
+    items: list[SpeedLevelOut]
+    default_level: int
 
 
 class SpeakerRosterSet(ApiModel):
@@ -85,6 +99,7 @@ class SegmentOut(ApiModel):
     pause_after_ms: int
     audio_asset_id: uuid.UUID | None
     duration_ms: int | None
+    word_count: int = 0
 
 
 class ProjectOut(ApiModel):
@@ -98,6 +113,9 @@ class ProjectOut(ApiModel):
     default_generation_speed: float
     sentence_pause_ms: int
     paragraph_pause_ms: int
+    repeat_count: int
+    pause_between_repeats_ms: int
+    word_count: int = 0
     created_at: datetime
     updated_at: datetime
     speakers: list[SpeakerOut] = Field(default_factory=list)
