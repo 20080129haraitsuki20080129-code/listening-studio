@@ -375,7 +375,10 @@ class TestSpeakerRoster:
         ).json()
         assert [s["label"] for s in speakers] == ["A", "B", "C", "D"]
         assert [s["display_name"] for s in speakers] == [
-            "Voice 1", "Voice 2", "Voice 3", "Voice 4",
+            "Voice 1",
+            "Voice 2",
+            "Voice 3",
+            "Voice 4",
         ]
 
     async def test_shrinking_keeps_every_segment_attached_to_a_speaker(self, client):
@@ -563,7 +566,11 @@ class TestStyledDialogueApi:
         pid = (
             await client.post(
                 "/projects",
-                json={"title": "styled", "mode": "dialogue", "source_text": self.STYLED},
+                json={
+                    "title": "styled",
+                    "mode": "dialogue",
+                    "source_text": self.STYLED,
+                },
             )
         ).json()["id"]
         await client.post(f"/projects/{pid}/parse", json={})
@@ -594,7 +601,11 @@ class TestStyledDialogueApi:
         pid = (
             await client.post(
                 "/projects",
-                json={"title": "styled", "mode": "dialogue", "source_text": self.STYLED},
+                json={
+                    "title": "styled",
+                    "mode": "dialogue",
+                    "source_text": self.STYLED,
+                },
             )
         ).json()["id"]
         await client.post(f"/projects/{pid}/parse", json={})
@@ -615,7 +626,11 @@ class TestStyledDialogueApi:
         pid = (
             await client.post(
                 "/projects",
-                json={"title": "styled", "mode": "dialogue", "source_text": self.STYLED},
+                json={
+                    "title": "styled",
+                    "mode": "dialogue",
+                    "source_text": self.STYLED,
+                },
             )
         ).json()["id"]
         await client.post(f"/projects/{pid}/parse", json={})
@@ -639,13 +654,16 @@ class TestStyledDialogueApi:
 
     async def test_all_eight_styles_are_usable_at_once(self, client):
         combos = [
-            ("", ""), ("<b>", "</b>"), ("<i>", "</i>"), ("<u>", "</u>"),
-            ("<b><i>", "</i></b>"), ("<b><u>", "</u></b>"),
-            ("<i><u>", "</u></i>"), ("<b><i><u>", "</u></i></b>"),
+            ("", ""),
+            ("<b>", "</b>"),
+            ("<i>", "</i>"),
+            ("<u>", "</u>"),
+            ("<b><i>", "</i></b>"),
+            ("<b><u>", "</u></b>"),
+            ("<i><u>", "</u></i>"),
+            ("<b><i><u>", "</u></i></b>"),
         ]
-        html = "".join(
-            f"<div>{o}Turn {i}.{c}</div>" for i, (o, c) in enumerate(combos)
-        )
+        html = "".join(f"<div>{o}Turn {i}.{c}</div>" for i, (o, c) in enumerate(combos))
         pid = (
             await client.post(
                 "/projects",
@@ -657,7 +675,94 @@ class TestStyledDialogueApi:
         project = (await client.get(f"/projects/{pid}")).json()
         assert [s["label"] for s in project["speakers"]] == list("ABCDEFGH")
         assert [s["style_key"] for s in project["speakers"]] == [
-            "plain", "bold", "italic", "underline",
-            "bold_italic", "bold_underline", "italic_underline",
+            "plain",
+            "bold",
+            "italic",
+            "underline",
+            "bold_italic",
+            "bold_underline",
+            "italic_underline",
             "bold_italic_underline",
         ]
+
+
+class TestTranscriptSpeakerLetters:
+    """The PDF always letters speakers A, B, C, however they were marked."""
+
+    async def _pdf_text(self, client, pid: str) -> str:
+        import io
+
+        from pypdf import PdfReader
+
+        response = await client.get(f"/projects/{pid}/transcript.pdf")
+        assert response.status_code == 200
+        reader = PdfReader(io.BytesIO(response.content))
+        return "\n".join(page.extract_text() for page in reader.pages)
+
+    async def _project(self, client, source: str) -> str:
+        pid = (
+            await client.post(
+                "/projects",
+                json={"title": "letters", "mode": "dialogue", "source_text": source},
+            )
+        ).json()["id"]
+        await client.post(f"/projects/{pid}/parse", json={})
+        return pid
+
+    async def test_marker_dialogue_uses_letters(self, client):
+        pid = await self._project(client, "[A]\nFirst line.\n\n[B]\nSecond line.")
+        text = await self._pdf_text(client, pid)
+        assert "1. A" in text
+        assert "2. B" in text
+        assert "Voice" not in text
+
+    async def test_styled_dialogue_letters_are_consecutive(self, client):
+        # plain / bold / underline stores labels A, B and D. Printing "D" with
+        # no C in sight would read as a mistake, so letters follow position.
+        pid = await self._project(
+            client,
+            "<div>Plain turn.</div>"
+            "<div><b>Bold turn.</b></div>"
+            "<div><u>Underline turn.</u></div>",
+        )
+        stored = (await client.get(f"/projects/{pid}")).json()
+        assert [s["label"] for s in stored["speakers"]] == ["A", "B", "D"]
+
+        text = await self._pdf_text(client, pid)
+        assert "1. A" in text
+        assert "2. B" in text
+        assert "3. C" in text
+        assert "D" not in text.replace("Download", "")
+
+    async def test_letters_match_the_editor_voice_numbers(self, client):
+        """Voice 3 in the editor is C in the PDF."""
+        pid = await self._project(
+            client,
+            "<div>One.</div><div><i>Two.</i></div><div><b><u>Three.</u></b></div>",
+        )
+        stored = (await client.get(f"/projects/{pid}")).json()
+        # Editor labels slots by position: Voice 1, Voice 2, Voice 3.
+        assert [s["style_key"] for s in stored["speakers"]] == [
+            "plain",
+            "italic",
+            "bold_underline",
+        ]
+        text = await self._pdf_text(client, pid)
+        for position, letter in enumerate("ABC", start=1):
+            assert f"{position}. {letter}" in text
+
+    async def test_monologue_has_no_speaker_letters(self, client):
+        pid = (
+            await client.post(
+                "/projects",
+                json={
+                    "title": "mono",
+                    "mode": "monologue",
+                    "source_text": "Only one sentence here.",
+                },
+            )
+        ).json()["id"]
+        await client.post(f"/projects/{pid}/parse", json={})
+        text = await self._pdf_text(client, pid)
+        assert "Only one sentence here." in text
+        assert "1. A" not in text

@@ -268,15 +268,28 @@ class ProjectService:
     async def transcript_lines(
         self, session: AsyncSession, project: Project
     ) -> list[tuple[int, str | None, str, int | None]]:
-        """Ordered (index, speaker display name, text, duration) rows."""
-        speakers = {
-            speaker.id: speaker
-            for speaker in (
+        """Ordered (index, speaker letter, text, duration) rows.
+
+        Speakers are always lettered A, B, C in the transcript, whichever way
+        they were marked in the script. The letters are assigned by position
+        rather than copied from the stored label: a styled dialogue using, say,
+        plain, bold and underline stores A, B and D, and printing "D" with no C
+        in sight reads as a mistake. Position also keeps the letters lined up
+        with the numbered voice slots in the editor -- Voice 3 is always C.
+        """
+        speakers = list(
+            (
                 await session.execute(
-                    select(Speaker).where(Speaker.project_id == project.id)
+                    select(Speaker)
+                    .where(Speaker.project_id == project.id)
+                    .order_by(Speaker.label)
                 )
             ).scalars()
+        )
+        letters = {
+            speaker.id: chr(ord("A") + index) for index, speaker in enumerate(speakers)
         }
+
         segments = (
             await session.execute(
                 select(Segment)
@@ -286,11 +299,10 @@ class ProjectService:
         ).scalars()
         rows = []
         for position, segment in enumerate(segments, start=1):
-            speaker = speakers.get(segment.speaker_id) if segment.speaker_id else None
             rows.append(
                 (
                     position,
-                    speaker.display_name if speaker else None,
+                    letters.get(segment.speaker_id),
                     segment.text,
                     segment.duration_ms,
                 )

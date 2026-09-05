@@ -21,7 +21,7 @@ cost, no network round trip.
 - MP3 render with inter-segment pauses and EBU R128 loudness normalization
 - Player: seek, playback rate, A-B repeat, transcript show/hide
 - Projects save and reopen
-- Download the audio as MP3 and the script as PDF
+- Download the audio as MP3 and the script as PDF, speakers lettered A, B, C
 - UI in English or Japanese, switchable from the header
 
 ## Marking speakers
@@ -44,6 +44,12 @@ inside a turn does not hand that word to a different speaker.
 
 `[A]` / `[B]` markers still work. When a script has no styling, markers decide;
 when it has neither, the whole script is one speaker.
+
+The transcript PDF always letters speakers A, B, C, however they were marked.
+The letters follow position rather than the stored label: a styled dialogue
+using plain, bold and underline stores A, B and D internally, and printing "D"
+with no C in sight would read as a mistake. Position also keeps the letters
+lined up with the editor's numbered slots, so Voice 3 is always C.
 
 ## Interface language
 

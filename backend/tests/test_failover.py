@@ -135,7 +135,9 @@ class TestFailoverIsOptIn:
         render in some other voice."""
         voice = await _voice(session)
         project = Project(
-            title="t", mode="monologue", default_voice_id=voice.id,
+            title="t",
+            mode="monologue",
+            default_voice_id=voice.id,
             default_generation_speed=1.0,
         )
         session.add(project)

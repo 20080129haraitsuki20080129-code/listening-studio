@@ -67,10 +67,15 @@ class TestExtraction:
     def test_italic_and_underline_variants(self):
         assert extract_styled_lines("<i>x</i>")[0][0].mask == ITALIC
         assert extract_styled_lines("<em>x</em>")[0][0].mask == ITALIC
-        assert extract_styled_lines('<span style="font-style:italic">x</span>')[0][0].mask == ITALIC
+        assert (
+            extract_styled_lines('<span style="font-style:italic">x</span>')[0][0].mask
+            == ITALIC
+        )
         assert extract_styled_lines("<u>x</u>")[0][0].mask == UNDERLINE
         assert (
-            extract_styled_lines('<span style="text-decoration:underline">x</span>')[0][0].mask
+            extract_styled_lines('<span style="text-decoration:underline">x</span>')[0][
+                0
+            ].mask
             == UNDERLINE
         )
 
@@ -87,7 +92,9 @@ class TestExtraction:
         assert [line.text for line in lines] == ["One.", "Two."]
 
     def test_entities_are_decoded(self):
-        lines, _ = extract_styled_lines("<div>Tom &amp; Jerry said &quot;hi&quot;.</div>")
+        lines, _ = extract_styled_lines(
+            "<div>Tom &amp; Jerry said &quot;hi&quot;.</div>"
+        )
         assert lines[0].text == 'Tom & Jerry said "hi".'
 
     def test_a_single_styled_word_does_not_hijack_the_line(self):
@@ -106,7 +113,9 @@ class TestExtraction:
         assert lines[0].mask == BOLD
 
     def test_html_to_plain_text_keeps_line_structure(self):
-        assert html_to_plain_text("<div>One.</div><div><b>Two.</b></div>") == "One.\nTwo."
+        assert (
+            html_to_plain_text("<div>One.</div><div><b>Two.</b></div>") == "One.\nTwo."
+        )
 
 
 class TestLooksStyled:
@@ -169,9 +178,7 @@ class TestParseStyledDialogue:
         assert [s.text for s in segments] == ["Dr. Chen asked for it by 3.30 p.m."]
 
     def test_order_index_is_contiguous(self):
-        segments = parse_styled_dialogue(
-            "<div>One. Two.</div><div><b>Three.</b></div>"
-        )
+        segments = parse_styled_dialogue("<div>One. Two.</div><div><b>Three.</b></div>")
         assert [s.order_index for s in segments] == [0, 1, 2]
 
 
