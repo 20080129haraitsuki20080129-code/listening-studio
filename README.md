@@ -18,6 +18,18 @@ cost, no network round trip.
 - MP3 render with inter-segment pauses and EBU R128 loudness normalization
 - Player: seek, playback rate, A-B repeat, transcript show/hide
 - Projects save and reopen
+- UI in English or Japanese, switchable from the header
+
+## Interface language
+
+The header carries an English / 日本語 toggle. The first visit follows the
+browser's `Accept-Language`, and an explicit choice is remembered per browser.
+`<html lang>` follows the choice, so screen readers and browser translation
+behave correctly.
+
+API error messages are localized in the frontend by their normalized error
+code, so the backend stays language-agnostic. A code with no translation falls
+back to the server's own English message rather than showing a bare key.
 
 ## Providers
 

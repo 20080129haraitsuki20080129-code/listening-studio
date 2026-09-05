@@ -12,7 +12,17 @@ from app.config import get_settings
 
 _settings = get_settings()
 
-engine = create_async_engine(_settings.database_url, echo=False, pool_pre_ping=True)
+engine = create_async_engine(
+    _settings.database_url,
+    echo=False,
+    pool_pre_ping=True,
+    # Renders are long-running and hold a connection for their duration. Leave
+    # headroom so a few concurrent renders cannot starve ordinary requests, and
+    # fail fast rather than hanging when they do.
+    pool_size=10,
+    max_overflow=10,
+    pool_timeout=10,
+)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 

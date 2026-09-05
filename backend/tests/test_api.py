@@ -275,3 +275,79 @@ class TestErrorEnvelope:
         )
         assert r.status_code == 404
         assert r.json()["error"]["code"] == "VOICE_NOT_FOUND"
+
+
+class TestConcurrentRenders:
+    """Two renders of the same sentence must share the cache, not collide.
+
+    The TTS cache and audio assets are content-addressed, so concurrent renders
+    of identical text race for the same primary key. Before the inserts were
+    made conflict-tolerant this surfaced as a UniqueViolation that failed the
+    whole render.
+    """
+
+    async def _project_with_text(self, client, voices, text: str) -> str:
+        pid = (
+            await client.post(
+                "/projects",
+                json={"title": "concurrent", "mode": "monologue", "source_text": text},
+            )
+        ).json()["id"]
+        await client.patch(
+            f"/projects/{pid}", json={"default_voice_id": voices["british"]["id"]}
+        )
+        await client.post(f"/projects/{pid}/parse", json={})
+        return pid
+
+    async def test_identical_text_in_two_projects_both_render(self, client):
+        import asyncio
+
+        voices = await _sync_voices(client)
+        shared = "A shared sentence that both projects contain."
+        first = await self._project_with_text(client, voices, shared)
+        second = await self._project_with_text(client, voices, shared)
+
+        jobs = [
+            (await client.post(f"/projects/{pid}/renders", json={})).json()
+            for pid in (first, second)
+        ]
+
+        finished = []
+        for job in jobs:
+            for _ in range(150):
+                current = (await client.get(f"/renders/{job['id']}")).json()
+                if current["status"] in ("completed", "failed"):
+                    break
+                await asyncio.sleep(0.1)
+            finished.append(current)
+
+        assert [j["status"] for j in finished] == ["completed", "completed"], [
+            j.get("error") for j in finished
+        ]
+
+    async def test_second_render_of_identical_text_reuses_the_audio(self, client):
+        import asyncio
+
+        voices = await _sync_voices(client)
+        shared = "Another shared sentence for the cache."
+        first = await self._project_with_text(client, voices, shared)
+        second = await self._project_with_text(client, voices, shared)
+
+        async def render(pid):
+            job = (await client.post(f"/projects/{pid}/renders", json={})).json()
+            for _ in range(150):
+                current = (await client.get(f"/renders/{job['id']}")).json()
+                if current["status"] in ("completed", "failed"):
+                    return current
+                await asyncio.sleep(0.1)
+            return current
+
+        await render(first)
+        await render(second)
+
+        segments = [
+            (await client.get(f"/projects/{pid}")).json()["segments"][0]
+            for pid in (first, second)
+        ]
+        # Same text, same voice, same speed -> the identical cached asset.
+        assert segments[0]["audio_asset_id"] == segments[1]["audio_asset_id"]

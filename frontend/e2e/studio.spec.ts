@@ -1,5 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 
+// These specs assert English copy, so pin the locale rather than depending on
+// whatever the runner's browser prefers.
+test.use({ locale: "en-US" });
+
 /**
  * Covers the E2E scenarios in TASKS.md's pre-merge gate: monologue, dialogue
  * with distinct voices, A-B repeat, transcript hiding, and save/reload.

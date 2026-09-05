@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { LanguageToggle } from "@/components/LanguageToggle";
 import { ListeningPlayer } from "@/components/ListeningPlayer";
 import { VoiceSelector } from "@/components/VoiceSelector";
 import { ApiError, api } from "@/lib/api";
+import { type MessageKey, useDynamicLabel, useTranslation } from "@/lib/i18n";
 import type { Mode, Project, RenderJob, Voice } from "@/lib/types";
 
 const SAMPLE_DIALOGUE = `[A]
@@ -20,9 +22,11 @@ What did you find?`;
 const SAMPLE_MONOLOGUE = `Climate change is altering migration patterns across the world. Researchers say the shift is accelerating, and that some species are moving toward the poles faster than models predicted.`;
 
 export function Studio({ projectId }: { projectId?: string }) {
+  const { t } = useTranslation();
+  const label = useDynamicLabel();
   const [project, setProject] = useState<Project | null>(null);
   const [voices, setVoices] = useState<Voice[]>([]);
-  const [title, setTitle] = useState("Untitled");
+  const [title, setTitle] = useState("");
   const [mode, setMode] = useState<Mode>("monologue");
   const [sourceText, setSourceText] = useState(SAMPLE_MONOLOGUE);
   const [speed, setSpeed] = useState(1.0);
@@ -34,11 +38,20 @@ export function Studio({ projectId }: { projectId?: string }) {
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fail = useCallback((e: unknown) => {
-    setError(
-      e instanceof ApiError ? `${e.code}: ${e.message}` : "Something went wrong.",
-    );
-  }, []);
+  const fail = useCallback(
+    (e: unknown) => {
+      if (!(e instanceof ApiError)) {
+        setError(t("error.generic"));
+        return;
+      }
+      const key = `error.${e.code}` as MessageKey;
+      const localized = t(key);
+      // t() returns the key unchanged when the code has no translation, in
+      // which case the server's English message is more useful than the key.
+      setError(localized === key ? e.message : localized);
+    },
+    [t],
+  );
 
   const loadVoices = useCallback(async () => {
     try {
@@ -92,13 +105,18 @@ export function Studio({ projectId }: { projectId?: string }) {
     setError(null);
     setBusy("Saving");
     try {
+      const effectiveTitle = title.trim() || t("editor.untitled");
       let current = project;
       if (!current) {
-        current = await api.createProject({ title, mode, source_text: sourceText });
+        current = await api.createProject({
+          title: effectiveTitle,
+          mode,
+          source_text: sourceText,
+        });
         window.history.replaceState(null, "", `/projects/${current.id}`);
       }
       await api.updateProject(current.id, {
-        title,
+        title: effectiveTitle,
         mode,
         default_generation_speed: speed,
         transcript_visible_default: transcriptVisible,
@@ -110,7 +128,7 @@ export function Studio({ projectId }: { projectId?: string }) {
     } finally {
       setBusy(null);
     }
-  }, [project, title, mode, sourceText, speed, transcriptVisible, loadProject, fail]);
+  }, [project, title, mode, sourceText, speed, transcriptVisible, loadProject, fail, t]);
 
   const assignVoice = useCallback(
     async (speakerId: string, voiceId: string) => {
@@ -182,10 +200,13 @@ export function Studio({ projectId }: { projectId?: string }) {
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-4 md:p-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">Listening Studio</h1>
-        <Link href="/" className="text-sm underline underline-offset-4">
-          All projects
-        </Link>
+        <h1 className="text-xl font-semibold">{t("app.title")}</h1>
+        <div className="flex items-center gap-4">
+          <Link href="/" className="text-sm underline underline-offset-4">
+            {t("app.allProjects")}
+          </Link>
+          <LanguageToggle />
+        </div>
       </header>
 
       {error && (
@@ -203,7 +224,8 @@ export function Studio({ projectId }: { projectId?: string }) {
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            aria-label="Project title"
+            aria-label={t("editor.titleLabel")}
+            placeholder={t("editor.untitled")}
             className="field w-full text-base font-medium"
           />
 
@@ -219,7 +241,7 @@ export function Studio({ projectId }: { projectId?: string }) {
                 }}
                 className={`chip ${mode === m ? "chip-active" : ""}`}
               >
-                {m === "monologue" ? "Monologue" : "Dialogue"}
+                {m === "monologue" ? t("mode.monologue") : t("mode.dialogue")}
               </button>
             ))}
           </div>
@@ -228,8 +250,8 @@ export function Studio({ projectId }: { projectId?: string }) {
             value={sourceText}
             onChange={(e) => setSourceText(e.target.value)}
             rows={12}
-            aria-label="English script"
-            placeholder={"Paste English text.\n\nFor dialogue use [A] / [B] on their own lines."}
+            aria-label={t("editor.scriptLabel")}
+            placeholder={t("editor.placeholder")}
             className="field w-full resize-y font-mono text-sm leading-relaxed"
           />
 
@@ -239,20 +261,22 @@ export function Studio({ projectId }: { projectId?: string }) {
               disabled={busy !== null}
               className="btn-primary"
             >
-              {busy === "Saving" ? "Saving…" : "Save & parse"}
+              {busy === "Saving" ? t("editor.saving") : t("editor.saveParse")}
             </button>
             <button
               onClick={generate}
               disabled={busy !== null || !project || project.segments.length === 0 || Boolean(needsVoice)}
               className="btn-primary"
             >
-              {busy === "Generating" ? "Generating…" : "Generate audio"}
+              {busy === "Generating"
+                ? t("editor.generating")
+                : t("editor.generate")}
             </button>
           </div>
 
           {needsVoice && (
             <p className="text-xs text-amber-700 dark:text-amber-400">
-              Assign a voice before generating.
+              {t("editor.needsVoice")}
             </p>
           )}
 
@@ -265,7 +289,7 @@ export function Studio({ projectId }: { projectId?: string }) {
                 />
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {job.status} — {job.progress}%
+                {label("render", job.status)} — {job.progress}%
               </p>
             </div>
           )}
@@ -275,7 +299,7 @@ export function Studio({ projectId }: { projectId?: string }) {
         <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
           <div>
             <label className="mb-1 block text-sm font-medium">
-              Generation speed: {speed.toFixed(2)}×
+              {t("settings.generationSpeed", { speed: speed.toFixed(2) })}
             </label>
             <input
               type="range"
@@ -287,7 +311,7 @@ export function Studio({ projectId }: { projectId?: string }) {
               className="w-full accent-slate-900 dark:accent-slate-100"
             />
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Applied when the audio is generated. Playback rate is separate.
+              {t("settings.generationSpeedHint")}
             </p>
           </div>
 
@@ -296,7 +320,7 @@ export function Studio({ projectId }: { projectId?: string }) {
               {project.speakers.map((speaker) => (
                 <div key={speaker.id}>
                   <h3 className="mb-2 text-sm font-semibold">
-                    Speaker {speaker.label}
+                    {t("settings.speaker", { label: speaker.label })}
                     {speaker.voice_id && (
                       <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">
                         {voices.find((v) => v.id === speaker.voice_id)?.name}
@@ -313,7 +337,7 @@ export function Studio({ projectId }: { projectId?: string }) {
             </div>
           ) : (
             <div>
-              <h3 className="mb-2 text-sm font-semibold">Voice</h3>
+              <h3 className="mb-2 text-sm font-semibold">{t("settings.voice")}</h3>
               <VoiceSelector
                 voices={voices}
                 selectedId={project?.default_voice_id ?? null}
@@ -321,7 +345,7 @@ export function Studio({ projectId }: { projectId?: string }) {
               />
               {!project && (
                 <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                  Save the project first to pick a voice.
+                  {t("settings.saveFirst")}
                 </p>
               )}
             </div>
@@ -333,7 +357,7 @@ export function Studio({ projectId }: { projectId?: string }) {
       {project && project.segments.length > 0 && (
         <section className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
           <h2 className="mb-2 text-sm font-semibold">
-            Segments ({project.segments.length})
+            {t("segments.heading", { count: project.segments.length })}
           </h2>
           <ol className="space-y-1 text-sm">
             {project.segments.map((segment) => {

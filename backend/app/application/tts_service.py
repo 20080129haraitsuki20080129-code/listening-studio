@@ -6,12 +6,12 @@ import hashlib
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.resolution import cache_key, optional_hash, text_hash
 from app.infrastructure.audio.ffmpeg import MIME_BY_FORMAT, FFmpeg
 from app.infrastructure.db.models import AudioAsset, TTSCache
+from app.infrastructure.db.upsert import insert_ignoring_conflict, insert_or_get
 from app.infrastructure.storage.base import StorageBackend
 from app.infrastructure.tts.base import TTSRequest
 from app.infrastructure.tts.registry import TTSProviderRegistry
@@ -96,18 +96,24 @@ class TTSService:
         asset = await self._store_asset(
             session, audio_bytes, output_format, duration_ms, prefix="segments"
         )
-        session.add(
-            TTSCache(
-                cache_key=key,
-                provider=provider,
-                model=model,
-                provider_voice_id=provider_voice_id,
-                normalized_text_hash=text_hash(text),
-                instructions_hash=optional_hash(instructions),
-                speed=speed,
-                output_format=output_format,
-                audio_asset_id=asset.id,
-            )
+        # Another render may have cached the identical request while this one
+        # was synthesizing. Both produce the same audio, so keep whichever row
+        # landed first instead of failing.
+        await insert_ignoring_conflict(
+            session,
+            TTSCache,
+            {
+                "cache_key": key,
+                "provider": provider,
+                "model": model,
+                "provider_voice_id": provider_voice_id,
+                "normalized_text_hash": text_hash(text),
+                "instructions_hash": optional_hash(instructions),
+                "speed": speed,
+                "output_format": output_format,
+                "audio_asset_id": asset.id,
+            },
+            conflict_on=["cache_key"],
         )
         await session.flush()
         return SynthesisResult(audio_asset=asset, cache_hit=False)
@@ -124,29 +130,29 @@ class TTSService:
         digest = hashlib.sha256(audio_bytes).hexdigest()
         storage_key = f"audio/{prefix}/{digest[:2]}/{digest}.{output_format}"
 
-        existing = (
-            await session.execute(
-                select(AudioAsset).where(AudioAsset.storage_key == storage_key)
+        # The key is the content hash, so re-writing the same bytes is harmless
+        # and makes the write idempotent after a partial failure.
+        if not await self._storage.exists(storage_key):
+            await self._storage.put(
+                storage_key, audio_bytes, MIME_BY_FORMAT[output_format]
             )
-        ).scalar_one_or_none()
-        if existing is not None:
-            if not await self._storage.exists(storage_key):
-                await self._storage.put(
-                    storage_key, audio_bytes, MIME_BY_FORMAT[output_format]
-                )
-            return existing
 
-        await self._storage.put(storage_key, audio_bytes, MIME_BY_FORMAT[output_format])
-        asset = AudioAsset(
-            id=uuid.uuid4(),
-            storage_key=storage_key,
-            mime_type=MIME_BY_FORMAT[output_format],
-            format=output_format,
-            duration_ms=duration_ms,
-            size_bytes=len(audio_bytes),
-            sha256=digest,
+        # Two concurrent renders of the same sentence produce the same key.
+        # The loser reuses the winner's row rather than failing the render.
+        asset = await insert_or_get(
+            session,
+            AudioAsset,
+            {
+                "id": uuid.uuid4(),
+                "storage_key": storage_key,
+                "mime_type": MIME_BY_FORMAT[output_format],
+                "format": output_format,
+                "duration_ms": duration_ms,
+                "size_bytes": len(audio_bytes),
+                "sha256": digest,
+            },
+            conflict_on="storage_key",
         )
-        session.add(asset)
         await session.flush()
         return asset
 

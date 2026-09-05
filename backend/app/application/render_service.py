@@ -155,7 +155,11 @@ class RenderService:
 
             if job is not None:
                 job.progress = int((index + 1) / len(segments) * 90)
-                await session.flush()
+                # Commit per segment rather than holding one transaction for
+                # the whole render: a long-open transaction pins a pooled
+                # connection and blocks unrelated API requests. It also makes
+                # progress visible to the polling client.
+                await session.commit()
 
         final_bytes = await self._ffmpeg.concat(
             parts, gaps, out_format=output_format, normalize=True

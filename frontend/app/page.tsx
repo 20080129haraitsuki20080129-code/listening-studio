@@ -3,10 +3,13 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
+import { LanguageToggle } from "@/components/LanguageToggle";
 import { ApiError, api } from "@/lib/api";
+import { type MessageKey, useTranslation } from "@/lib/i18n";
 import type { ProjectSummary } from "@/lib/types";
 
 export default function HomePage() {
+  const { t, locale } = useTranslation();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -15,13 +18,17 @@ export default function HomePage() {
     try {
       setProjects(await api.listProjects());
     } catch (e) {
-      setError(
-        e instanceof ApiError ? `${e.code}: ${e.message}` : "Could not load projects.",
-      );
+      if (e instanceof ApiError) {
+        const key = `error.${e.code}` as MessageKey;
+        const localized = t(key);
+        setError(localized === key ? e.message : localized);
+      } else {
+        setError(t("projects.loadFailed"));
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     // The setState calls inside load() run after an await, so they land in a
@@ -38,10 +45,13 @@ export default function HomePage() {
   return (
     <main className="mx-auto max-w-3xl space-y-4 p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Listening Studio</h1>
-        <Link href="/create" className="btn-primary">
-          New project
-        </Link>
+        <h1 className="text-xl font-semibold">{t("app.title")}</h1>
+        <div className="flex items-center gap-3">
+          <LanguageToggle />
+          <Link href="/create" className="btn-primary">
+            {t("projects.new")}
+          </Link>
+        </div>
       </div>
 
       {error && (
@@ -54,10 +64,10 @@ export default function HomePage() {
       )}
 
       {loading ? (
-        <p className="text-sm text-slate-500">Loading…</p>
+        <p className="text-sm text-slate-500">{t("projects.loading")}</p>
       ) : projects.length === 0 ? (
         <p className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-slate-700">
-          No projects yet.
+          {t("projects.empty")}
         </p>
       ) : (
         <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
@@ -66,12 +76,19 @@ export default function HomePage() {
               <Link href={`/projects/${p.id}`} className="flex-1">
                 <div className="font-medium">{p.title}</div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">
-                  {p.mode} · updated{" "}
-                  {new Date(p.updated_at).toLocaleString()}
+                  {t("projects.updated", {
+                    mode:
+                      p.mode === "monologue"
+                        ? t("mode.monologue")
+                        : p.mode === "dialogue"
+                          ? t("mode.dialogue")
+                          : p.mode,
+                    date: new Date(p.updated_at).toLocaleString(locale),
+                  })}
                 </div>
               </Link>
               <button onClick={() => remove(p.id)} className="chip">
-                Delete
+                {t("projects.delete")}
               </button>
             </li>
           ))}

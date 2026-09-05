@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import { useDynamicLabel, useTranslation } from "@/lib/i18n";
 import type { Voice } from "@/lib/types";
 
 type Props = {
@@ -10,26 +11,9 @@ type Props = {
   onSelect: (voiceId: string) => void;
 };
 
-const ACCENT_LABELS: Record<string, string> = {
-  american: "American",
-  british: "British",
-  australian: "Australian",
-  canadian: "Canadian",
-  irish: "Irish",
-  indian: "Indian",
-  scottish: "Scottish",
-  new_zealand: "New Zealand",
-  south_african: "South African",
-  singaporean: "Singaporean",
-  unknown: "Unknown",
-};
-
-function label(accent: string | null): string {
-  if (!accent) return "Unknown";
-  return ACCENT_LABELS[accent] ?? accent;
-}
-
 export function VoiceSelector({ voices, selectedId, onSelect }: Props) {
+  const { t } = useTranslation();
+  const label = useDynamicLabel();
   const [accent, setAccent] = useState("");
   const [gender, setGender] = useState("");
   const [provider, setProvider] = useState("");
@@ -63,13 +47,13 @@ export function VoiceSelector({ voices, selectedId, onSelect }: Props) {
         <select
           value={accent}
           onChange={(e) => setAccent(e.target.value)}
-          aria-label="Accent"
+          aria-label={t("voice.accent")}
           className="field"
         >
-          <option value="">All accents</option>
+          <option value="">{t("voice.allAccents")}</option>
           {options.accents.map((a) => (
             <option key={a} value={a}>
-              {label(a)}
+              {label("accent", a)}
             </option>
           ))}
         </select>
@@ -77,13 +61,13 @@ export function VoiceSelector({ voices, selectedId, onSelect }: Props) {
         <select
           value={gender}
           onChange={(e) => setGender(e.target.value)}
-          aria-label="Gender"
+          aria-label={t("voice.gender")}
           className="field"
         >
-          <option value="">All genders</option>
+          <option value="">{t("voice.allGenders")}</option>
           {options.genders.map((g) => (
             <option key={g} value={g}>
-              {g[0].toUpperCase() + g.slice(1)}
+              {label("gender", g)}
             </option>
           ))}
         </select>
@@ -91,10 +75,10 @@ export function VoiceSelector({ voices, selectedId, onSelect }: Props) {
         <select
           value={provider}
           onChange={(e) => setProvider(e.target.value)}
-          aria-label="Provider"
+          aria-label={t("voice.provider")}
           className="field"
         >
-          <option value="">All providers</option>
+          <option value="">{t("voice.allProviders")}</option>
           {options.providers.map((p) => (
             <option key={p} value={p}>
               {p}
@@ -105,14 +89,14 @@ export function VoiceSelector({ voices, selectedId, onSelect }: Props) {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search name"
-          aria-label="Search voices"
+          placeholder={t("voice.searchPlaceholder")}
+          aria-label={t("voice.searchLabel")}
           className="field"
         />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        {filtered.length} of {voices.length} voices
+        {t("voice.count", { shown: filtered.length, total: voices.length })}
       </p>
 
       <ul className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
@@ -133,7 +117,8 @@ export function VoiceSelector({ voices, selectedId, onSelect }: Props) {
                 <div
                   className={`text-xs ${selected ? "opacity-80" : "text-slate-500 dark:text-slate-400"}`}
                 >
-                  {label(voice.accent)} · {voice.gender} · {voice.provider}
+                  {label("accent", voice.accent)} · {label("gender", voice.gender)} ·{" "}
+                  {voice.provider}
                 </div>
               </button>
             </li>
@@ -141,7 +126,7 @@ export function VoiceSelector({ voices, selectedId, onSelect }: Props) {
         })}
         {filtered.length === 0 && (
           <li className="rounded border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500 dark:border-slate-700">
-            No voices match these filters.
+            {t("voice.noMatches")}
           </li>
         )}
       </ul>
