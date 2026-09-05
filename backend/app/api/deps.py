@@ -22,6 +22,7 @@ from app.infrastructure.audio.ffmpeg import FFmpeg
 from app.infrastructure.auth.oauth import build_oauth
 from app.infrastructure.db.models import User
 from app.infrastructure.db.session import SessionLocal, get_session
+from app.infrastructure.storage.base import StorageBackend
 from app.infrastructure.storage.local_storage import LocalStorage
 from app.infrastructure.tts.registry import TTSProviderRegistry
 
@@ -63,11 +64,50 @@ def build_registry(settings: Settings) -> TTSProviderRegistry:
     return registry
 
 
+def build_storage(settings: Settings) -> StorageBackend:
+    """Pick a storage backend from configuration.
+
+    Object storage matters wherever the filesystem does not survive a restart,
+    which is most free hosting. Local disk stays the default for development.
+    """
+    if settings.storage_backend != "s3":
+        return LocalStorage(settings.local_storage_path)
+
+    missing = [
+        name
+        for name, value in (
+            ("S3_BUCKET", settings.s3_bucket),
+            ("S3_ENDPOINT_URL", settings.s3_endpoint_url),
+            ("S3_ACCESS_KEY_ID", settings.s3_access_key_id),
+            ("S3_SECRET_ACCESS_KEY", settings.s3_secret_access_key),
+        )
+        if not value
+    ]
+    if missing:
+        # Falling back to disk here would look like it worked and then lose
+        # every render when the container restarts.
+        raise RuntimeError(
+            "STORAGE_BACKEND=s3 but these are unset: " + ", ".join(missing)
+        )
+
+    from app.infrastructure.storage.s3_storage import S3Storage
+
+    log.info("Using S3-compatible storage at %s", settings.s3_endpoint_url)
+    return S3Storage(
+        bucket=settings.s3_bucket,
+        endpoint_url=settings.s3_endpoint_url,
+        access_key=settings.s3_access_key_id,
+        secret_key=settings.s3_secret_access_key,
+        region=settings.s3_region,
+        public_base_url=settings.s3_public_base_url,
+    )
+
+
 class Container:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.registry = build_registry(settings)
-        self.storage = LocalStorage(settings.local_storage_path)
+        self.storage = build_storage(settings)
         self.ffmpeg = FFmpeg(settings.ffmpeg_bin, settings.ffprobe_bin)
         self.tts = TTSService(self.registry, self.storage, self.ffmpeg)
         self.voices = VoiceService(self.registry)

@@ -43,8 +43,19 @@ class Settings(BaseSettings):
         "postgresql+psycopg://listening:listening@localhost:5432/listening_studio"
     )
 
+    # "local" writes to disk; "s3" talks to any S3-compatible store
+    # (Supabase Storage, Cloudflare R2, Backblaze B2, S3 itself).
     storage_backend: str = "local"
     local_storage_path: Path = Path("./data/audio")
+
+    s3_bucket: str = ""
+    s3_endpoint_url: str = ""
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = ""
+    s3_region: str = "auto"
+    # Set only when the bucket serves objects publicly; otherwise the API
+    # proxies them and the bucket stays private.
+    s3_public_base_url: str = ""
 
     # Off by default. TASKS Phase 2 requires failover to be opt-in, because
     # silently swapping to an audibly different voice ruins listening material.

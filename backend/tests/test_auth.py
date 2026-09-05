@@ -92,9 +92,7 @@ class TestUpsertFromProfile:
 
     async def test_an_unverified_google_email_is_not_stored(self, session):
         service = await self._service()
-        user = await service.upsert_from_profile(
-            session, self._profile(email=None)
-        )
+        user = await service.upsert_from_profile(session, self._profile(email=None))
         assert user.email is None
 
 
@@ -245,9 +243,7 @@ class TestApiEnforcement:
         )
         try:
             cookie_name = container.settings.session_cookie_name
-            alice_cookie = {
-                cookie_name: issue_session(alice.id, SECRET, 3600)
-            }
+            alice_cookie = {cookie_name: issue_session(alice.id, SECRET, 3600)}
             bob_cookie = {cookie_name: issue_session(bob.id, SECRET, 3600)}
 
             # Anonymous access is refused outright.

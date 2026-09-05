@@ -232,10 +232,20 @@ really do synthesize audio.
 provider SDKs stay inside `infrastructure/tts`, the domain layer imports no
 infrastructure, and subprocess calls stay out of the upper layers.
 
+## Deploying
+
+See [DEPLOY.md](DEPLOY.md). The stack it describes — Netlify, Hugging Face
+Spaces and Supabase — is free and none of it asks for a card.
+
+Kokoro needs PyTorch and about 1GB of memory, so the backend has to be a real
+container: Netlify Functions, Vercel and the other serverless tiers can host
+the frontend but not the backend.
+
 ## Documentation
 
 - `docs/SPEC.md` — the product requirements this implements
 - `docs/API.md`, `docs/SCHEMA.sql` — the API and schema contracts
+- [DEPLOY.md](DEPLOY.md) — deployment, and what each free tier actually allows
 - `docs/PLAN.md` — implementation decisions, measured performance, and the
   three gaps found in the handed-over schema
 

@@ -12,6 +12,7 @@ httpx
 pyjwt
 authlib
 itsdangerous
+boto3
 kokoro
 soundfile
 numpy

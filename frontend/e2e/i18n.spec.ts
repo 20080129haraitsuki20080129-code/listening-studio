@@ -111,8 +111,9 @@ test.describe("dialogue voice slots", () => {
 
   test("the voice list offers no engine choice", async ({ page }) => {
     await page.goto("/create");
-    // Wait for the catalog before reading the filter's options.
-    await expect(page.getByText(/of \d+ voices/)).toBeVisible();
+    // Wait for a non-empty catalog: "0 of 0 voices" renders first, before the
+    // request lands, and would make the assertion below pass vacuously.
+    await expect(page.getByText(/of [1-9]\d* voices/)).toBeVisible();
 
     // Which engine produced a voice is not something a listener can hear, so
     // it is neither filterable nor shown.

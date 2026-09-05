@@ -1,0 +1,17 @@
+# Netlify build for the Next.js frontend.
+# The backend is not deployed here -- it needs PyTorch and a long-running
+# process, neither of which Netlify provides.
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# NEXT_PUBLIC_API_BASE_URL must be set in the Netlify UI to the backend's
+# public URL, e.g. https://<user>-<space>.hf.space/api/v1
+# It is baked into the bundle at build time, so changing it needs a rebuild.
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
