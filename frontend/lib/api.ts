@@ -1,0 +1,123 @@
+import type {
+  Project,
+  ProjectSummary,
+  RenderJob,
+  Segment,
+  Speaker,
+  Voice,
+} from "./types";
+
+const BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
+
+/** An error the API returned in its normalized envelope. */
+export class ApiError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly retryable: boolean,
+    readonly requestId: string | null,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${BASE}${path}`, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
+    });
+  } catch {
+    throw new ApiError(
+      "NETWORK_ERROR",
+      "Could not reach the server. Is the backend running?",
+      true,
+      null,
+    );
+  }
+
+  if (response.status === 204) return undefined as T;
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = body?.error;
+    throw new ApiError(
+      error?.code ?? "REQUEST_FAILED",
+      error?.message ?? `Request failed (${response.status}).`,
+      error?.retryable ?? false,
+      error?.request_id ?? null,
+    );
+  }
+  return body as T;
+}
+
+/** Absolute URL for an audio path the API returned. */
+export function audioUrl(path: string): string {
+  if (/^https?:\/\//.test(path)) return path;
+  return `${BASE.replace(/\/api\/v1$/, "")}${path}`;
+}
+
+export const api = {
+  health: () => request<{ status: string }>("/health"),
+
+  listVoices: (params: Record<string, string> = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request<{ items: Voice[] }>(`/voices${query ? `?${query}` : ""}`);
+  },
+  syncVoices: () =>
+    request<{ created: number; updated: number; providers: string[] }>(
+      "/voices/sync",
+      { method: "POST" },
+    ),
+
+  listProjects: () => request<ProjectSummary[]>("/projects"),
+  getProject: (id: string) => request<Project>(`/projects/${id}`),
+  createProject: (body: { title: string; mode: string; source_text?: string }) =>
+    request<Project>("/projects", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateProject: (id: string, body: Record<string, unknown>) =>
+    request<Project>(`/projects/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteProject: (id: string) =>
+    request<void>(`/projects/${id}`, { method: "DELETE" }),
+
+  parseProject: (id: string, body: { source_text?: string; mode?: string }) =>
+    request<{ speakers: { label: string }[] }>(`/projects/${id}/parse`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  updateSpeaker: (id: string, body: Record<string, unknown>) =>
+    request<Speaker>(`/speakers/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  updateSegment: (id: string, body: Record<string, unknown>) =>
+    request<Segment>(`/segments/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  renderSegment: (id: string) =>
+    request<{ audio_asset_id: string; audio_url: string; duration_ms: number }>(
+      `/segments/${id}/render`,
+      { method: "POST" },
+    ),
+
+  createRender: (projectId: string, format = "mp3", idempotencyKey?: string) =>
+    request<RenderJob>(`/projects/${projectId}/renders`, {
+      method: "POST",
+      body: JSON.stringify({ format }),
+      headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {},
+    }),
+  getRender: (id: string) => request<RenderJob>(`/renders/${id}`),
+  cancelRender: (id: string) =>
+    request<RenderJob>(`/renders/${id}/cancel`, { method: "POST" }),
+};

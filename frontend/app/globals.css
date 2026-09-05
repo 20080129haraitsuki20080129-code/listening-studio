@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@layer components {
+  .field {
+    @apply rounded-md border border-slate-300 bg-white px-3 py-2 text-sm
+      outline-none transition focus:border-slate-500
+      dark:border-slate-700 dark:bg-slate-950;
+  }
+
+  .chip {
+    @apply rounded-full border border-slate-300 px-3 py-1 text-xs transition
+      hover:border-slate-500 dark:border-slate-700 dark:hover:border-slate-500;
+  }
+
+  .chip-active {
+    @apply border-slate-900 bg-slate-900 text-white
+      dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900;
+  }
+
+  .btn-primary {
+    @apply rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white
+      transition hover:bg-slate-700 disabled:cursor-not-allowed
+      disabled:opacity-40 dark:bg-slate-100 dark:text-slate-900
+      dark:hover:bg-slate-300;
+  }
+}
