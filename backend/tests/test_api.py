@@ -548,3 +548,116 @@ class TestSpeakerOrdering:
         assert [s["label"] for s in roster] == ["A", "B", "C", "D"]
         project = (await client.get(f"/projects/{pid}")).json()
         assert [s["label"] for s in project["speakers"]] == ["A", "B", "C", "D"]
+
+
+class TestStyledDialogueApi:
+    """Speakers marked by bold / italic / underline rather than [A] / [B]."""
+
+    STYLED = (
+        "<div>Plain turn.</div>"
+        "<div><b>Bold turn.</b></div>"
+        "<div><u>Underline turn.</u></div>"
+    )
+
+    async def test_styles_become_speakers_with_a_style_key(self, client):
+        pid = (
+            await client.post(
+                "/projects",
+                json={"title": "styled", "mode": "dialogue", "source_text": self.STYLED},
+            )
+        ).json()["id"]
+        await client.post(f"/projects/{pid}/parse", json={})
+
+        project = (await client.get(f"/projects/{pid}")).json()
+        assert project["styled_dialogue"] is True
+        assert [(s["label"], s["style_key"]) for s in project["speakers"]] == [
+            ("A", "plain"),
+            ("B", "bold"),
+            ("D", "underline"),
+        ]
+
+    async def test_marker_dialogue_is_not_flagged_as_styled(self, client):
+        pid = (
+            await client.post(
+                "/projects",
+                json={
+                    "title": "markers",
+                    "mode": "dialogue",
+                    "source_text": "[A]\nHello.\n\n[B]\nHi.",
+                },
+            )
+        ).json()["id"]
+        await client.post(f"/projects/{pid}/parse", json={})
+        assert (await client.get(f"/projects/{pid}")).json()["styled_dialogue"] is False
+
+    async def test_restyling_removes_the_slot_that_is_no_longer_used(self, client):
+        pid = (
+            await client.post(
+                "/projects",
+                json={"title": "styled", "mode": "dialogue", "source_text": self.STYLED},
+            )
+        ).json()["id"]
+        await client.post(f"/projects/{pid}/parse", json={})
+        assert len((await client.get(f"/projects/{pid}")).json()["speakers"]) == 3
+
+        # Drop the plain and underline turns; only bold remains.
+        await client.post(
+            f"/projects/{pid}/parse",
+            json={"source_text": "<div><b>Only bold now.</b></div>"},
+        )
+        project = (await client.get(f"/projects/{pid}")).json()
+        assert [(s["label"], s["style_key"]) for s in project["speakers"]] == [
+            ("B", "bold")
+        ]
+
+    async def test_restyling_keeps_the_voice_of_a_slot_that_survives(self, client):
+        voices = await _sync_voices(client)
+        pid = (
+            await client.post(
+                "/projects",
+                json={"title": "styled", "mode": "dialogue", "source_text": self.STYLED},
+            )
+        ).json()["id"]
+        await client.post(f"/projects/{pid}/parse", json={})
+
+        project = (await client.get(f"/projects/{pid}")).json()
+        bold = next(s for s in project["speakers"] if s["label"] == "B")
+        await client.patch(
+            f"/speakers/{bold['id']}", json={"voice_id": voices["british"]["id"]}
+        )
+
+        await client.post(
+            f"/projects/{pid}/parse",
+            json={
+                "source_text": "<div><b>Bold stays.</b></div><div><i>Italic joins.</i></div>"
+            },
+        )
+        project = (await client.get(f"/projects/{pid}")).json()
+        bold = next(s for s in project["speakers"] if s["label"] == "B")
+        assert bold["voice_id"] == voices["british"]["id"]
+        assert {s["label"] for s in project["speakers"]} == {"B", "C"}
+
+    async def test_all_eight_styles_are_usable_at_once(self, client):
+        combos = [
+            ("", ""), ("<b>", "</b>"), ("<i>", "</i>"), ("<u>", "</u>"),
+            ("<b><i>", "</i></b>"), ("<b><u>", "</u></b>"),
+            ("<i><u>", "</u></i>"), ("<b><i><u>", "</u></i></b>"),
+        ]
+        html = "".join(
+            f"<div>{o}Turn {i}.{c}</div>" for i, (o, c) in enumerate(combos)
+        )
+        pid = (
+            await client.post(
+                "/projects",
+                json={"title": "eight", "mode": "dialogue", "source_text": html},
+            )
+        ).json()["id"]
+        await client.post(f"/projects/{pid}/parse", json={})
+
+        project = (await client.get(f"/projects/{pid}")).json()
+        assert [s["label"] for s in project["speakers"]] == list("ABCDEFGH")
+        assert [s["style_key"] for s in project["speakers"]] == [
+            "plain", "bold", "italic", "underline",
+            "bold_italic", "bold_underline", "italic_underline",
+            "bold_italic_underline",
+        ]

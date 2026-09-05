@@ -5,19 +5,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { ListeningPlayer } from "@/components/ListeningPlayer";
+import { StyledScriptEditor } from "@/components/StyledScriptEditor";
 import { VoiceSelector } from "@/components/VoiceSelector";
 import { ApiError, api, downloadUrls } from "@/lib/api";
 import { type MessageKey, useDynamicLabel, useTranslation } from "@/lib/i18n";
+import { type StyleKey, styleClasses } from "@/lib/styles";
 import type { Mode, Project, RenderJob, Voice } from "@/lib/types";
 
-const SAMPLE_DIALOGUE = `[A]
-Have you finished the report? Dr. Chen asked for it by 3.30 p.m.
-
-[B]
-Not yet. I found something interesting in the U.S. data.
-
-[A]
-What did you find?`;
+// Styled sample: each line's formatting picks its speaker, so nothing has to
+// be typed to mark a turn.
+const SAMPLE_DIALOGUE_HTML = [
+  "<div>Have you finished the report? Dr. Chen asked for it by 3.30 p.m.</div>",
+  "<div><b>Not yet. I found something interesting in the U.S. data.</b></div>",
+  "<div>What did you find?</div>",
+].join("");
 
 const SAMPLE_MONOLOGUE = `Climate change is altering migration patterns across the world. Researchers say the shift is accelerating, and that some species are moving toward the poles faster than models predicted.`;
 
@@ -29,6 +30,7 @@ export function Studio({ projectId }: { projectId?: string }) {
   const [title, setTitle] = useState("");
   const [mode, setMode] = useState<Mode>("monologue");
   const [sourceText, setSourceText] = useState(SAMPLE_MONOLOGUE);
+  const [styled, setStyled] = useState(false);
   const [speed, setSpeed] = useState(1.0);
   const [speakerCount, setSpeakerCount] = useState(2);
   const [transcriptVisible, setTranscriptVisible] = useState(true);
@@ -82,6 +84,7 @@ export function Studio({ projectId }: { projectId?: string }) {
         setTitle(p.title);
         setMode(p.mode);
         setSourceText(p.source_text);
+        setStyled(p.styled_dialogue);
         setSpeed(Number(p.default_generation_speed));
         if (p.speakers.length > 0) setSpeakerCount(p.speakers.length);
         setTranscriptVisible(p.transcript_visible_default);
@@ -129,12 +132,11 @@ export function Studio({ projectId }: { projectId?: string }) {
         default_generation_speed: speed,
         transcript_visible_default: transcriptVisible,
       });
+      // Parsing owns the roster: the script says how many speakers there are,
+      // whether they are marked with styling or with [A] / [B]. The count
+      // control adjusts it afterwards; applying it here would fight the parse
+      // and silently discard speakers the script had just established.
       await api.parseProject(current.id, { source_text: sourceText, mode });
-      if (mode === "dialogue") {
-        // The parser creates a speaker per marker found; the chosen count is
-        // what the user actually wants voice slots for.
-        await api.setSpeakerCount(current.id, speakerCount);
-      }
       await loadProject(current.id);
     } catch (e) {
       fail(e);
@@ -147,7 +149,6 @@ export function Studio({ projectId }: { projectId?: string }) {
     mode,
     sourceText,
     speed,
-    speakerCount,
     transcriptVisible,
     loadProject,
     fail,
@@ -274,7 +275,10 @@ export function Studio({ projectId }: { projectId?: string }) {
                 onClick={() => {
                   setMode(m);
                   if (!project) {
-                    setSourceText(m === "dialogue" ? SAMPLE_DIALOGUE : SAMPLE_MONOLOGUE);
+                    setSourceText(
+                      m === "dialogue" ? SAMPLE_DIALOGUE_HTML : SAMPLE_MONOLOGUE,
+                    );
+                    setStyled(m === "dialogue");
                   }
                 }}
                 className={`chip ${mode === m ? "chip-active" : ""}`}
@@ -284,14 +288,23 @@ export function Studio({ projectId }: { projectId?: string }) {
             ))}
           </div>
 
-          <textarea
-            value={sourceText}
-            onChange={(e) => setSourceText(e.target.value)}
-            rows={12}
-            aria-label={t("editor.scriptLabel")}
-            placeholder={t("editor.placeholder")}
-            className="field w-full resize-y font-mono text-sm leading-relaxed"
-          />
+          {mode === "dialogue" ? (
+            <StyledScriptEditor
+              html={sourceText}
+              onChange={setSourceText}
+              ariaLabel={t("editor.scriptLabel")}
+              placeholder={t("editor.placeholder")}
+            />
+          ) : (
+            <textarea
+              value={sourceText}
+              onChange={(e) => setSourceText(e.target.value)}
+              rows={12}
+              aria-label={t("editor.scriptLabel")}
+              placeholder={t("editor.placeholder")}
+              className="field w-full resize-y font-mono text-sm leading-relaxed"
+            />
+          )}
 
           <div className="flex flex-wrap items-center gap-3">
             <button
@@ -355,34 +368,49 @@ export function Studio({ projectId }: { projectId?: string }) {
 
           {mode === "dialogue" ? (
             <div className="space-y-4">
-              <div>
-                <label
-                  htmlFor="speaker-count"
-                  className="mb-1 block text-sm font-medium"
-                >
-                  {t("speakers.count")}
-                </label>
-                <select
-                  id="speaker-count"
-                  value={speakerCount}
-                  onChange={(e) => applySpeakerCount(Number(e.target.value))}
-                  className="field"
-                >
-                  {[1, 2, 3, 4, 5, 6].map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* With styles the roster follows the script: how many
+                  formatting combinations appear is how many speakers there
+                  are, so a count control would only contradict it. */}
+              {!styled && (
+                <div>
+                  <label
+                    htmlFor="speaker-count"
+                    className="mb-1 block text-sm font-medium"
+                  >
+                    {t("speakers.count")}
+                  </label>
+                  <select
+                    id="speaker-count"
+                    value={speakerCount}
+                    onChange={(e) => applySpeakerCount(Number(e.target.value))}
+                    className="field"
+                  >
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {project?.speakers.map((speaker, index) => (
                 <div key={speaker.id}>
                   <h3 className="mb-2 text-sm font-semibold">
                     {t("speakers.voiceN", { n: index + 1 })}
-                    <span className="ml-2 text-xs font-normal text-slate-500 dark:text-slate-400">
-                      {t("speakers.marker", { label: `[${speaker.label}]` })}
-                    </span>
+                    {styled && speaker.style_key ? (
+                      <span
+                        className={`ml-2 text-xs font-normal text-slate-500 dark:text-slate-400 ${styleClasses(
+                          speaker.style_key as StyleKey,
+                        )}`}
+                      >
+                        {t(`style.${speaker.style_key}` as MessageKey)}
+                      </span>
+                    ) : (
+                      <span className="ml-2 text-xs font-normal text-slate-500 dark:text-slate-400">
+                        {t("speakers.marker", { label: `[${speaker.label}]` })}
+                      </span>
+                    )}
                     {speaker.voice_id && (
                       <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">
                         {voices.find((v) => v.id === speaker.voice_id)?.name}

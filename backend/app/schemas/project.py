@@ -49,13 +49,14 @@ class SpeakerUpdate(ApiModel):
 class SpeakerRosterSet(ApiModel):
     """How many speakers the dialogue should have."""
 
-    count: int = Field(ge=1, le=6)
+    count: int = Field(ge=1, le=8)
 
 
 class SpeakerOut(ApiModel):
     id: uuid.UUID
     project_id: uuid.UUID
     label: str
+    style_key: str | None = None
     display_name: str
     voice_id: uuid.UUID | None
     generation_speed: float
@@ -91,6 +92,7 @@ class ProjectOut(ApiModel):
     title: str
     mode: Mode
     source_text: str
+    styled_dialogue: bool = False
     transcript_visible_default: bool
     default_voice_id: uuid.UUID | None
     default_generation_speed: float

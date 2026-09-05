@@ -65,10 +65,27 @@ const en = {
   "voice.count": "{shown} of {total} voices",
   "voice.noMatches": "No voices match these filters.",
 
+  "editor.bold": "Bold",
+  "editor.italic": "Italic",
+  "editor.underline": "Underline",
+  "editor.styleHint": "Style a line to assign it to a voice",
+  "editor.markerMode": "Markers ([A] / [B])",
+  "editor.styleMode": "Styles (bold / italic / underline)",
+
   // Speakers
   "speakers.count": "Number of speakers",
   "speakers.voiceN": "Voice {n}",
   "speakers.marker": "marked {label} in the script",
+
+  "style.plain": "Plain",
+  "style.bold": "Bold",
+  "style.italic": "Italic",
+  "style.underline": "Underline",
+  "style.bold_italic": "Bold + italic",
+  "style.bold_underline": "Bold + underline",
+  "style.italic_underline": "Italic + underline",
+  "style.bold_italic_underline": "Bold + italic + underline",
+  "style.unused": "not used in the script yet",
 
   // Downloads
   "download.heading": "Download",
@@ -188,6 +205,23 @@ const ja: Record<MessageKey, string> = {
   "voice.searchLabel": "声を検索",
   "voice.count": "{total}件中 {shown}件",
   "voice.noMatches": "条件に一致する声がありません。",
+
+  "editor.bold": "太字",
+  "editor.italic": "斜体",
+  "editor.underline": "下線",
+  "editor.styleHint": "行に書式を付けると、その声に割り当てられます",
+  "editor.markerMode": "記号で指定（[A] / [B]）",
+  "editor.styleMode": "書式で指定（太字・斜体・下線）",
+
+  "style.plain": "書式なし",
+  "style.bold": "太字",
+  "style.italic": "斜体",
+  "style.underline": "下線",
+  "style.bold_italic": "太字＋斜体",
+  "style.bold_underline": "太字＋下線",
+  "style.italic_underline": "斜体＋下線",
+  "style.bold_italic_underline": "太字＋斜体＋下線",
+  "style.unused": "スクリプト内で未使用",
 
   "speakers.count": "話者の人数",
   "speakers.voiceN": "声{n}",

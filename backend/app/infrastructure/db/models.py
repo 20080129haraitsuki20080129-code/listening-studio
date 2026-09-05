@@ -34,6 +34,12 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from app.domain.styled_parsing import (
+    STYLE_NAMES,
+    looks_styled,
+    mask_for_label,
+)
+
 PROVIDERS = ("openai", "azure", "elevenlabs", "kokoro")
 MODES = ("monologue", "dialogue", "listening_test", "shadowing")
 GENDERS = ("female", "male", "neutral", "unknown")
@@ -102,6 +108,11 @@ class Project(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    @property
+    def styled_dialogue(self) -> bool:
+        """Whether speakers come from text styling rather than [A] markers."""
+        return looks_styled(self.source_text or "")
 
     speakers: Mapped[list[Speaker]] = relationship(
         back_populates="project",
@@ -193,6 +204,16 @@ class Speaker(Base):
     )
     created_at: Mapped[datetime] = _created()
     updated_at: Mapped[datetime] = _updated()
+
+    @property
+    def style_key(self) -> str | None:
+        """The style combination this slot corresponds to, e.g. "bold_italic".
+
+        Meaningful only for a styled dialogue; the UI decides whether to show
+        it, since the same labels are used for [A] / [B] markers.
+        """
+        mask = mask_for_label(self.label)
+        return STYLE_NAMES.get(mask) if mask is not None else None
 
     project: Mapped[Project] = relationship(back_populates="speakers")
 

@@ -19,6 +19,8 @@ export type Speaker = {
   id: string;
   project_id: string;
   label: string;
+  /** Which style combination this slot corresponds to, for styled dialogues. */
+  style_key: string | null;
   display_name: string;
   voice_id: string | null;
   generation_speed: number;
@@ -45,6 +47,8 @@ export type Project = {
   title: string;
   mode: Mode;
   source_text: string;
+  /** True when speakers come from text styling rather than [A] markers. */
+  styled_dialogue: boolean;
   transcript_visible_default: boolean;
   default_voice_id: string | null;
   default_generation_speed: number;

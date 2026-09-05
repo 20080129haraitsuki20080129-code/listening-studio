@@ -72,29 +72,44 @@ test.describe("language switching", () => {
 });
 
 test.describe("dialogue voice slots", () => {
-  test("the speaker count drives how many voice slots appear", async ({ page }) => {
+  test("the speaker count control applies to a marker dialogue", async ({
+    page,
+  }) => {
     await page.goto("/create");
     await page.getByRole("button", { name: "Dialogue" }).click();
     await page.getByLabel("Project title").fill("Slots");
+
+    // Type [A] / [B] markers as plain text: with no styling present the
+    // dialogue falls back to markers, where the count control applies.
+    const editor = page.locator('[role="textbox"][contenteditable]');
+    await editor.click();
+    await page.keyboard.press("ControlOrMeta+a");
+    await page.keyboard.type("[A]");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("Hello there.");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("[B]");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("Hi back.");
+
     await page.getByRole("button", { name: "Save & parse" }).click();
+    await expect(page.getByText(/Segments \(/)).toBeVisible();
 
-    await expect(page.getByText("Voice 1")).toBeVisible();
-    await expect(page.getByText("Voice 2")).toBeVisible();
-
-    await page.getByLabel("Number of speakers").selectOption("4");
-    await expect(page.getByText("Voice 4")).toBeVisible();
+    const count = page.getByLabel("Number of speakers");
+    await expect(count).toBeVisible();
+    await count.selectOption("4");
     await expect(page.locator("h3").filter({ hasText: /^Voice \d/ })).toHaveCount(4);
-
-    // Each slot says which script marker it maps to.
-    await expect(page.getByText("marked [A] in the script")).toBeVisible();
     await expect(page.getByText("marked [D] in the script")).toBeVisible();
 
-    await page.getByLabel("Number of speakers").selectOption("2");
+    await count.selectOption("2");
     await expect(page.locator("h3").filter({ hasText: /^Voice \d/ })).toHaveCount(2);
   });
 
   test("the voice list offers no engine choice", async ({ page }) => {
     await page.goto("/create");
+    // Wait for the catalog before reading the filter's options.
+    await expect(page.getByText(/of \d+ voices/)).toBeVisible();
+
     // Which engine produced a voice is not something a listener can hear, so
     // it is neither filterable nor shown.
     await expect(page.getByLabel("Provider")).toHaveCount(0);

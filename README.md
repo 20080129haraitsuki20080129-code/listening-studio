@@ -9,11 +9,13 @@ cost, no network round trip.
 
 ## What works today
 
-- Monologue and dialogue (`[A]` / `[B]`, or `A:` / `B:`)
+- Monologue and dialogue
+- Dialogue speakers marked by **text styling** — bold / italic / underline with
+  the usual ⌘/Ctrl+B, I, U — or by `[A]` / `[B]` markers if you prefer typing
 - Sentence splitting that survives abbreviations, so `Dr. Chen asked for it by
   3.30 p.m.` stays one segment
 - 28 voices across American and British English, filterable by accent and gender
-- Dialogue: choose how many speakers, then a voice per speaker
+- Up to 8 speakers, one per style combination
 - Per-speaker voice and speed
 - Generation speed (server-side) separate from playback rate (browser-only)
 - MP3 render with inter-segment pauses and EBU R128 loudness normalization
@@ -21,6 +23,27 @@ cost, no network round trip.
 - Projects save and reopen
 - Download the audio as MP3 and the script as PDF
 - UI in English or Japanese, switchable from the header
+
+## Marking speakers
+
+Bold, italic and underline are independent, so there are exactly eight
+combinations — which is where the eight-speaker ceiling comes from:
+
+| Voice | Style | | Voice | Style |
+|---|---|---|---|---|
+| 1 | plain | | 5 | bold + italic |
+| 2 | **bold** | | 6 | bold + underline |
+| 3 | *italic* | | 7 | italic + underline |
+| 4 | underline | | 8 | bold + italic + underline |
+
+The mapping is fixed: bold is always Voice 2, whatever else the script
+contains, so it never shifts as you edit.
+
+Styling is read per line, not per character, so emphasising a single word
+inside a turn does not hand that word to a different speaker.
+
+`[A]` / `[B]` markers still work. When a script has no styling, markers decide;
+when it has neither, the whole script is one speaker.
 
 ## Interface language
 

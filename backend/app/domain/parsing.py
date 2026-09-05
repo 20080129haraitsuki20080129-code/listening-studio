@@ -9,6 +9,13 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from .styled_parsing import (
+    extract_styled_lines,
+    html_to_plain_text,
+    looks_styled,
+    speaker_label_for_mask,
+)
+
 # Sentence splitting must survive abbreviations, decimals and quotations, so a
 # naive split on "." is explicitly ruled out by the SPEC. Rather than pull in a
 # tokenizer, we split on terminal punctuation and then rejoin any break that
@@ -116,6 +123,9 @@ _INLINE_SPEAKER = re.compile(
 )
 
 _PARAGRAPH_BREAK = re.compile(r"\n\s*\n")
+
+# The unstyled slot, which is also where a dialogue with no speaker marks goes.
+DEFAULT_SPEAKER_LABEL = "A"
 
 
 @dataclass(frozen=True)
@@ -227,15 +237,56 @@ def parse_dialogue(source_text: str) -> list[ParsedSegment]:
     return segments
 
 
+def parse_styled_dialogue(source_html: str) -> list[ParsedSegment]:
+    """Assign speakers from bold / italic / underline instead of [A] markers."""
+    lines, _ = extract_styled_lines(source_html)
+    segments: list[ParsedSegment] = []
+    for line in lines:
+        label = speaker_label_for_mask(line.mask)
+        for sentence in split_sentences(line.text):
+            segments.append(
+                ParsedSegment(
+                    order_index=len(segments),
+                    speaker_label=label,
+                    text=sentence,
+                )
+            )
+    return segments
+
+
 def parse_script(source_text: str, mode: str) -> list[ParsedSegment]:
+    """Parse a script into segments.
+
+    A dialogue can mark speakers two ways: with [A] / B: markers, or with text
+    styling. Styling wins when present, because a styled document may also
+    contain square brackets as ordinary punctuation.
+    """
     if mode == "dialogue":
-        segments = parse_dialogue(source_text)
-        # Fall back rather than returning nothing when the text carries no
-        # speaker markup at all.
-        if not segments:
-            return parse_monologue(source_text)
-        return segments
-    return parse_monologue(source_text)
+        if looks_styled(source_text):
+            segments = parse_styled_dialogue(source_text)
+            if segments:
+                return segments
+
+        plain = html_to_plain_text(source_text) if "<" in source_text else source_text
+        segments = parse_dialogue(plain)
+        if segments:
+            return segments
+
+        # No styling and no markers: a dialogue of one. Leaving the speaker
+        # unset would give the project no voice slot at all, and so no way to
+        # choose a voice.
+        return [
+            ParsedSegment(
+                order_index=segment.order_index,
+                speaker_label=DEFAULT_SPEAKER_LABEL,
+                text=segment.text,
+                starts_paragraph=segment.starts_paragraph,
+            )
+            for segment in parse_monologue(plain)
+        ]
+
+    plain = html_to_plain_text(source_text) if "<" in source_text else source_text
+    return parse_monologue(plain)
 
 
 def speaker_labels(segments: list[ParsedSegment]) -> list[str]:

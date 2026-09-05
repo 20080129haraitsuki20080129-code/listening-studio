@@ -8,12 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.domain.errors import InvalidScript, NotFound
 from app.domain.parsing import ParsedSegment, parse_script, speaker_labels
+from app.domain.styled_parsing import MAX_STYLE_SPEAKERS
 from app.infrastructure.db.models import Project, Segment, Speaker
 from app.schemas.project import ProjectCreate, ProjectUpdate
 
-# Dialogue speakers are addressed by single letters in the script markup
-# ([A] / [B] / ...), which caps a practical roster well below the alphabet.
-MAX_SPEAKERS = 6
+# Speakers can be marked either with [A] / [B] letters or with bold / italic /
+# underline. Three independent marks give exactly eight combinations, which is
+# what sets the ceiling.
+MAX_SPEAKERS = MAX_STYLE_SPEAKERS
 
 
 def speaker_label(index: int) -> str:
@@ -107,15 +109,24 @@ class ProjectService:
             ).scalars()
         }
 
-        for label in speaker_labels(parsed):
+        wanted = speaker_labels(parsed)
+        for index, label in enumerate(wanted):
             if label not in existing_speakers:
                 speaker = Speaker(
                     project_id=project.id,
                     label=label,
-                    display_name=f"Speaker {label}",
+                    display_name=f"Voice {index + 1}",
                 )
                 session.add(speaker)
                 existing_speakers[label] = speaker
+
+        # Drop speakers the script no longer mentions. Without this a styled
+        # dialogue accumulates dead voice slots -- restyle every line and the
+        # old style still shows up asking to be given a voice.
+        for label, speaker in list(existing_speakers.items()):
+            if label not in wanted:
+                await session.delete(speaker)
+                del existing_speakers[label]
         await session.flush()
 
         old = (

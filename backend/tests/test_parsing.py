@@ -104,10 +104,13 @@ class TestParseDialogue:
 
 
 class TestParseScript:
-    def test_dialogue_without_markup_falls_back_to_monologue(self):
+    def test_dialogue_without_markup_becomes_a_single_speaker(self):
+        # A dialogue with nothing to distinguish speakers is a dialogue of one.
+        # Leaving the speaker unset would give the project no voice slot, and
+        # so no way to choose a voice at all.
         segments = parse_script("Just prose. No speakers.", mode="dialogue")
         assert len(segments) == 2
-        assert all(s.speaker_label is None for s in segments)
+        assert {s.speaker_label for s in segments} == {"A"}
 
     def test_monologue_mode_ignores_speaker_markup(self):
         segments = parse_script("[A]\nHello.", mode="monologue")
