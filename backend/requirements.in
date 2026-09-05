@@ -1,0 +1,18 @@
+fastapi
+uvicorn[standard]
+sqlalchemy[asyncio]>=2.0
+greenlet
+alembic
+psycopg[binary]
+pydantic>=2
+pydantic-settings
+python-dotenv
+anyio
+httpx
+kokoro
+soundfile
+numpy
+
+# spaCy pipeline used by misaki/kokoro for English G2P. Pinned explicitly so it
+# is never silently downloaded at first synthesis.
+en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl

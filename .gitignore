@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+playwright-report/
+test-results/
+
+# Env & secrets
+.env
+.env.local
+.env.*.local
+
+# Generated audio / data
+data/
+backend/data/
+
+# OS
+.DS_Store
