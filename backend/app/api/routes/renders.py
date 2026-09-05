@@ -7,7 +7,12 @@ from fastapi import APIRouter, Depends, Header, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import Container, get_container, require_user
+from app.api.deps import (
+    Container,
+    get_container,
+    rate_limit_renders,
+    require_user,
+)
 from app.api.downloads import content_disposition, safe_filename
 from app.domain.errors import InvalidScript, NotFound
 from app.infrastructure.db.models import AudioAsset, RenderJob, User
@@ -50,7 +55,10 @@ async def _to_out(
 
 
 @router.post(
-    "/projects/{project_id}/renders", response_model=RenderOut, status_code=202
+    "/projects/{project_id}/renders",
+    response_model=RenderOut,
+    status_code=202,
+    dependencies=[Depends(rate_limit_renders)],
 )
 async def create_render(
     project_id: uuid.UUID,

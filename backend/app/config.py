@@ -90,6 +90,11 @@ class Settings(BaseSettings):
     x_client_id: str = ""
     x_client_secret: str = ""
 
+    # Rate limits, sized so one person cannot exhaust a free tier's CPU,
+    # storage or monthly egress. Set a limit to 0 to disable that rule.
+    rate_limit_renders_per_hour: int = 60
+    rate_limit_writes_per_minute: int = 60
+
     app_env: str = "development"
     log_level: str = "INFO"
     max_script_chars: int = 50_000

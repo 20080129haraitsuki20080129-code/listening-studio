@@ -18,6 +18,7 @@ from app.application.tts_service import TTSService
 from app.application.voice_service import VoiceService
 from app.config import Settings, get_settings
 from app.domain.auth import NotAuthenticated, read_session
+from app.domain.rate_limit import Rule, SlidingWindowLimiter
 from app.infrastructure.audio.ffmpeg import FFmpeg
 from app.infrastructure.auth.oauth import build_oauth
 from app.infrastructure.db.models import User
@@ -113,6 +114,7 @@ class Container:
         self.voices = VoiceService(self.registry)
         self.projects = ProjectService()
         self.auth = AuthService()
+        self.limiter = SlidingWindowLimiter()
         self.oauth = build_oauth(settings)
         self.renders = RenderService(self.tts, self.ffmpeg, self.storage, SessionLocal)
 
@@ -161,3 +163,44 @@ async def require_user(
     if user is None:
         raise NotAuthenticated
     return user
+
+
+def _caller_key(request: Request, user: User | None) -> str:
+    """Who to count against.
+
+    A signed-in user is counted by account, so switching networks does not
+    reset the allowance. Anonymous callers -- only possible when sign-in is
+    off -- fall back to the peer address.
+    """
+    if user is not None:
+        return f"user:{user.id}"
+    client = request.client
+    return f"ip:{client.host if client else 'unknown'}"
+
+
+def rate_limit_renders(
+    request: Request,
+    user: User | None = Depends(require_user),
+    container: Container = Depends(get_container),
+) -> None:
+    """Guard the expensive path: synthesis, storage and egress."""
+    limit = container.settings.rate_limit_renders_per_hour
+    if limit <= 0:
+        return
+    container.limiter.check(
+        f"render:{_caller_key(request, user)}", Rule(limit=limit, window_seconds=3600)
+    )
+
+
+def rate_limit_writes(
+    request: Request,
+    user: User | None = Depends(require_user),
+    container: Container = Depends(get_container),
+) -> None:
+    """Guard the cheap-but-unbounded paths that still write rows."""
+    limit = container.settings.rate_limit_writes_per_minute
+    if limit <= 0:
+        return
+    container.limiter.check(
+        f"write:{_caller_key(request, user)}", Rule(limit=limit, window_seconds=60)
+    )

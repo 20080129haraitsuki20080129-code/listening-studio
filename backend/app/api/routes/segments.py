@@ -5,7 +5,12 @@ import uuid
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import Container, get_container, require_user
+from app.api.deps import (
+    Container,
+    get_container,
+    rate_limit_renders,
+    require_user,
+)
 from app.infrastructure.db.models import User
 from app.infrastructure.db.session import get_session
 from app.schemas.project import SegmentOut, SegmentUpdate, SpeakerOut, SpeakerUpdate
@@ -37,7 +42,11 @@ async def update_segment(
     return SegmentOut.model_validate(segment)
 
 
-@router.post("/segments/{segment_id}/render", response_model=SegmentRenderOut)
+@router.post(
+    "/segments/{segment_id}/render",
+    response_model=SegmentRenderOut,
+    dependencies=[Depends(rate_limit_renders)],
+)
 async def render_segment(
     segment_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),

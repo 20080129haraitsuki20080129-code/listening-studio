@@ -46,6 +46,13 @@ def _guard_production_secrets(settings) -> None:
         problems.append("SESSION_SECRET is shorter than 32 characters")
     if not settings.cookie_secure:
         problems.append("COOKIE_SECURE must be true when served over HTTPS")
+    if not settings.auth_required:
+        # Without a provider there is no way to sign in, so the instance would
+        # be open to anyone who found the URL.
+        problems.append(
+            "no sign-in provider is configured, so the instance would be open "
+            "to anyone (set GOOGLE_CLIENT_ID/SECRET or X_CLIENT_ID/SECRET)"
+        )
     if problems:
         raise RuntimeError("Refusing to start in production: " + "; ".join(problems))
 

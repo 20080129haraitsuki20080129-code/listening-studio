@@ -74,6 +74,12 @@ async def client(engine) -> AsyncIterator[AsyncClient]:
     container.settings = get_settings()
     container.registry = TTSProviderRegistry({"kokoro": StubTTSProvider()})
 
+    from app.domain.rate_limit import SlidingWindowLimiter
+
+    # A fresh limiter per test, so one test's requests cannot exhaust another's
+    # allowance.
+    container.limiter = SlidingWindowLimiter()
+
     import tempfile
     from pathlib import Path
 
@@ -90,6 +96,9 @@ async def client(engine) -> AsyncIterator[AsyncClient]:
     container.tts = TTSService(container.registry, container.storage, container.ffmpeg)
     container.voices = VoiceService(container.registry)
     container.projects = ProjectService()
+    from app.application.auth_service import AuthService
+
+    container.auth = AuthService()
     container.renders = RenderService(
         container.tts, container.ffmpeg, container.storage, factory
     )

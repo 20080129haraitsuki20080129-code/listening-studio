@@ -43,7 +43,9 @@ Leave `S3_PUBLIC_BASE_URL` unset so the bucket stays private and the API serves
 the bytes.
 
 > A free project **pauses after 7 days without traffic** and has to be resumed
-> by hand. Open the app occasionally, or point an uptime pinger at `/health`.
+> by hand. `.github/workflows/keepalive.yml` handles this: set the repository
+> secret `API_BASE_URL` to `https://<space>.hf.space/api/v1` and it pings
+> `/health` twice a day, which keeps both Supabase and the Space awake.
 
 ## 2. Sign-in — Google and/or X
 
@@ -102,7 +104,8 @@ still the default or shorter than 32 characters, or if `COOKIE_SECURE` is off.
 Two things about the free tier worth knowing: the Space **sleeps after 48 hours
 idle** and takes a cold start to wake, and its **disk does not survive a
 restart** -- which is exactly why audio goes to Supabase rather than local
-disk.
+disk. The keep-alive workflow covers the sleeping; the storage setting covers
+the disk.
 
 ## 4. Netlify — the frontend
 
@@ -126,3 +129,42 @@ URL can use the instance**.
 
 Then open the Netlify site, sign in, and generate something. The first render
 after a cold start is slower while the model loads.
+
+
+## What stops the instance being abused
+
+A public URL on a free tier can be drained by one person in an afternoon, so
+three things guard it, all free:
+
+**Sign-in is mandatory in production.** The server refuses to start under
+`APP_ENV=production` with no identity provider configured, because the instance
+would otherwise be open to anyone who found the URL. It also refuses a default
+or short `SESSION_SECRET`, and refuses cookies that are not marked secure.
+
+**Rate limits** cap the paths that cost something: 60 renders an hour and 60
+writes a minute per signed-in account, both configurable.
+
+```bash
+RATE_LIMIT_RENDERS_PER_HOUR=60   # 0 disables
+RATE_LIMIT_WRITES_PER_MINUTE=60
+```
+
+Rendering is what burns CPU, storage and the monthly egress allowance, so it
+is capped per account rather than per IP -- switching networks does not reset
+it. Reads are not capped.
+
+The limiter keeps its state in memory, which is exact for one process and is
+what this runs as: the model sits in memory, so there is one worker by design.
+Two workers would need a shared store.
+
+**Ownership** means one account cannot read or delete another's projects, so
+the worst a signed-in stranger can do is spend their own allowance.
+
+## What none of this prevents
+
+**A public Space shows its own source.** There is no free, card-free way to run
+a container with private source that is also reachable by other people. The
+choice is: accept a public backend (nothing secret is in it -- every credential
+comes from environment variables, and the git history has been scanned), pay
+or verify a card for a VM, or run it from your own machine over a tunnel and
+keep it on.
