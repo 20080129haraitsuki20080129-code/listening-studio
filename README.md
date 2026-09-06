@@ -180,7 +180,19 @@ only with a voice of the same accent *and* gender, and never when either is
 "unknown". A substitute that would obviously sound different is refused and the
 render fails instead.
 
-## Quick start
+## Running it
+
+Once set up, this is the whole thing:
+
+```bash
+./start.sh
+```
+
+It starts PostgreSQL if it is not already running, applies any new migrations,
+brings up the backend and frontend, waits for both, and opens the app. Ctrl+C
+stops everything and releases both ports.
+
+## First-time setup
 
 ```bash
 brew install postgresql@16 ffmpeg espeak-ng
@@ -210,10 +222,12 @@ Frontend:
 ```bash
 cd frontend
 npm install
-npm run dev
 ```
 
-Open <http://localhost:3000/create>.
+After that, use `./start.sh` from the repository root.
+
+Sign-in stays off unless an identity provider is configured, which is what you
+want on your own machine — see [Signing in](#signing-in) if you ever expose it.
 
 `espeak-ng` is required, not optional -- see `backend/README.md` for why.
 
