@@ -1,5 +1,10 @@
 # Deploying
 
+**Not currently deployed.** This app runs locally — see `./start.sh` in the
+README. What follows is kept because everything it needs is already built
+(OAuth sign-in, ownership, rate limits, S3-compatible storage, a Dockerfile),
+so deploying later is configuration rather than code.
+
 Everything below is free and none of it asks for a card.
 
 ```
@@ -43,9 +48,10 @@ Leave `S3_PUBLIC_BASE_URL` unset so the bucket stays private and the API serves
 the bytes.
 
 > A free project **pauses after 7 days without traffic** and has to be resumed
-> by hand. `.github/workflows/keepalive.yml` handles this: set the repository
-> secret `API_BASE_URL` to `https://<space>.hf.space/api/v1` and it pings
-> `/health` twice a day, which keeps both Supabase and the Space awake.
+> by hand, and a free Space sleeps after 48 hours idle. A scheduled ping to
+> `/health` keeps both awake, since the health check opens a database
+> connection — a GitHub Actions cron or any free uptime monitor will do. This
+> repository does not ship one, because it is currently run locally.
 
 ## 2. Sign-in — Google and/or X
 
@@ -104,8 +110,8 @@ still the default or shorter than 32 characters, or if `COOKIE_SECURE` is off.
 Two things about the free tier worth knowing: the Space **sleeps after 48 hours
 idle** and takes a cold start to wake, and its **disk does not survive a
 restart** -- which is exactly why audio goes to Supabase rather than local
-disk. The keep-alive workflow covers the sleeping; the storage setting covers
-the disk.
+disk. A scheduled ping covers the sleeping; the storage setting covers the
+disk.
 
 ## 4. Netlify — the frontend
 
